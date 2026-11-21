@@ -18,6 +18,7 @@ import {
 } from './tiles';
 import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount, outdatedOsmCount } from './osm';
 import { renderOsm, rerenderOsm } from './osmLayer';
+import { openShare } from './share';
 import { CATEGORIES, ROUTE_COLORS, type LatLng, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
 
@@ -64,6 +65,7 @@ function popupHtml(r: Route): string {
         <button class="btn small" data-route-action="details" data-id="${r.id}">Edit</button>
         <button class="btn small" data-route-action="line" data-id="${r.id}">Edit line</button>
         <button class="btn small" data-route-action="reverse" data-id="${r.id}" title="Swap put-in and take-out">⇄</button>
+        <button class="btn small" data-route-action="share" data-id="${r.id}">Share…</button>
         <button class="btn small primary" data-route-action="offline" data-id="${r.id}">Offline…</button>
       </div>
     </div>`;
@@ -395,6 +397,8 @@ export function initRoutes() {
         return openDetails(r, false);
       case 'line':
         return editLine(r);
+      case 'share':
+        return openShare(r);
       case 'offline':
         return openOffline(r);
       case 'reverse':

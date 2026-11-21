@@ -1,6 +1,16 @@
-import { CATEGORIES, ROUTE_COLORS, type Category, type LatLng, type RiverPoint, type Route, type Severity } from './types';
+import {
+  CATEGORIES,
+  ROUTE_COLORS,
+  type Category,
+  type LatLng,
+  type RiverPoint,
+  type Route,
+  type Severity,
+  type Track,
+  type TrackFix,
+} from './types';
 
-export function toGeoJSON(points: RiverPoint[], routes: Route[]) {
+export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[] = []) {
   return {
     type: 'FeatureCollection',
     features: [
@@ -15,27 +25,45 @@ export function toGeoJSON(points: RiverPoint[], routes: Route[]) {
         geometry: { type: 'LineString', coordinates: coords.map(([lat, lng]) => [lng, lat]) },
         properties: { featureType: 'route', ...props },
       })),
+      // Fix times go in `coordTimes` (the common GeoJSON convention for GPS tracks).
+      ...tracks.map(({ fixes, recording: _recording, ...props }) => ({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: fixes.map(([lat, lng]) => [lng, lat]) },
+        properties: {
+          featureType: 'track',
+          ...props,
+          coordTimes: fixes.map(([, , t]) => (t ? new Date(t).toISOString() : null)),
+          accuracies: fixes.map(([, , , acc]) => acc),
+        },
+      })),
     ],
   };
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Parse a GeoJSON FeatureCollection: Points become points, LineStrings become routes. */
-export function fromGeoJSON(data: unknown): { points: RiverPoint[]; routes: Route[] } {
+export interface ParsedData {
+  points: RiverPoint[];
+  routes: Route[];
+  tracks: Track[];
+}
+
+/**
+ * Parse a GeoJSON FeatureCollection: Points become points; LineStrings become
+ * tracks when marked as such, routes otherwise.
+ */
+export function fromGeoJSON(data: unknown): ParsedData {
   const fc = data as { type?: string; features?: unknown[] };
   if (fc?.type !== 'FeatureCollection' || !Array.isArray(fc.features)) {
     throw new Error('Not a GeoJSON FeatureCollection');
   }
   const now = new Date().toISOString();
-  const points: RiverPoint[] = [];
-  const routes: Route[] = [];
+  const out: ParsedData = { points: [], routes: [], tracks: [] };
   for (const f of fc.features as any[]) {
     const p = f?.properties ?? {};
     const base = {
       id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
       name: String(p.name ?? 'Untitled'),
-      description: String(p.description ?? ''),
       createdAt: typeof p.createdAt === 'string' ? p.createdAt : now,
       updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : now,
     };
@@ -43,8 +71,9 @@ export function fromGeoJSON(data: unknown): { points: RiverPoint[]; routes: Rout
       const [lng, lat] = f.geometry.coordinates ?? [];
       if (!isNum(lat) || !isNum(lng)) continue;
       const category: Category = p.category in CATEGORIES ? p.category : 'poi';
-      points.push({
+      out.points.push({
         ...base,
+        description: String(p.description ?? ''),
         category,
         lat,
         lng,
@@ -52,16 +81,30 @@ export function fromGeoJSON(data: unknown): { points: RiverPoint[]; routes: Rout
         severity: ['low', 'medium', 'high'].includes(p.severity) ? (p.severity as Severity) : undefined,
       });
     } else if (f?.geometry?.type === 'LineString') {
-      const coords: LatLng[] = (f.geometry.coordinates ?? [])
-        .filter((c: unknown) => Array.isArray(c) && isNum(c[0]) && isNum(c[1]))
-        .map((c: number[]) => [c[1], c[0]]);
-      if (coords.length < 2) continue;
-      routes.push({
-        ...base,
-        color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : ROUTE_COLORS[routes.length % ROUTE_COLORS.length],
-        coords,
-      });
+      const raw: unknown[] = f.geometry.coordinates ?? [];
+      const valid = raw
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => Array.isArray(c) && isNum(c[0]) && isNum(c[1])) as { c: number[]; i: number }[];
+      if (valid.length < 2) continue;
+      if (p.featureType === 'track') {
+        const times: unknown[] = Array.isArray(p.coordTimes) ? p.coordTimes : [];
+        const accs: unknown[] = Array.isArray(p.accuracies) ? p.accuracies : [];
+        const fixes: TrackFix[] = valid.map(({ c, i }) => {
+          const t = Date.parse(String(times[i] ?? ''));
+          const acc = accs[i];
+          return [c[1], c[0], Number.isFinite(t) ? t : 0, isNum(acc) ? acc : -1];
+        });
+        out.tracks.push({ ...base, fixes, source: p.source === 'gpx' ? 'gpx' : 'recorded' });
+      } else {
+        const coords: LatLng[] = valid.map(({ c }) => [c[1], c[0]]);
+        out.routes.push({
+          ...base,
+          description: String(p.description ?? ''),
+          color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : ROUTE_COLORS[out.routes.length % ROUTE_COLORS.length],
+          coords,
+        });
+      }
     }
   }
-  return { points, routes };
+  return out;
 }

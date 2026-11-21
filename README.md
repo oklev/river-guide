@@ -31,8 +31,10 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Add as my point** in an icon's popup turns that feature into one of your own editable points.
 - It works anywhere OpenStreetMap has coverage, not just Georgia, because only the area around your routes is downloaded.
 
-**Data**
-- GeoJSON import/export covers both points (Point features) and routes (LineString features).
+**Data & sharing**
+- **Share…** on a route saves it as one `.riverguide.zip` file: the route, your points within a chosen distance of it, their photos, and optionally your GPS tracks along it. Offline maps aren't included; they can be downloaded again. Inside is a standard `route.geojson` plus a `photos/` folder.
+- **Import file** accepts `.riverguide.zip` and plain GeoJSON. Items are matched by ID and the newer copy wins, so moving data back and forth between devices doesn't duplicate anything or overwrite newer edits. Each device keeps its own offline downloads.
+- **Export GeoJSON** saves all points, routes and tracks, without photos, as a backup.
 
 ## Map tiles
 

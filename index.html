@@ -68,8 +68,8 @@
           <div class="footer-row">
             <button id="export" class="btn">Export GeoJSON</button>
             <label class="btn">
-              Import GeoJSON
-              <input id="import" type="file" accept=".geojson,.json,application/geo+json" hidden />
+              Import file
+              <input id="import" type="file" accept=".zip,.geojson,.json,application/zip,application/geo+json,application/json" hidden />
             </label>
           </div>
           <div class="storage muted small">
@@ -184,6 +184,29 @@
             <span class="spacer"></span>
             <button type="button" id="offline-close" class="btn">Close</button>
             <button type="button" id="offline-start" class="btn primary">Download</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="share-dialog" class="editor">
+        <div class="dialog-body">
+          <h2 id="share-title">Share route</h2>
+          <p class="muted small">Saves the route and everything you've added along it as one file (.riverguide.zip). Open it with "Import file" on another phone or computer. Offline maps aren't included; they can be downloaded again.</p>
+          <label>Include points within
+            <select id="share-corridor">
+              <option value="0.5">0.5 km of the route</option>
+              <option value="2" selected>2 km (shuttles, outfitters nearby)</option>
+              <option value="5">5 km</option>
+            </select>
+          </label>
+          <label class="check-row"><input id="share-photos" type="checkbox" checked /> Include photos</label>
+          <label class="check-row"><input id="share-tracks" type="checkbox" /> Include my GPS tracks along this route</label>
+          <div id="share-summary" class="small"></div>
+          <div id="share-status" class="small" role="status"></div>
+          <div class="editor-actions">
+            <span class="spacer"></span>
+            <button type="button" id="share-cancel" class="btn">Cancel</button>
+            <button type="button" id="share-export" class="btn primary">Export</button>
           </div>
         </div>
       </dialog>
