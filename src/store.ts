@@ -35,6 +35,10 @@ export async function del(store: StoreName, id: string): Promise<void> {
   await (await db()).delete(store, id);
 }
 
+export async function get<S extends StoreName>(store: S, key: string): Promise<Stores[S] | undefined> {
+  return (await db()).get(store, key);
+}
+
 export async function hasKey(store: StoreName, key: string): Promise<boolean> {
   return (await (await db()).getKey(store, key)) !== undefined;
 }

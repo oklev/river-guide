@@ -1,6 +1,6 @@
 import L from 'leaflet';
 import { map } from './map';
-import { state } from './state';
+import { offlineAreas, state } from './state';
 import { del, put } from './store';
 import { KM_PER_MI, lengthMi, locateOnLine } from './geo';
 import { RouteEditor } from './routeEditor';
@@ -16,8 +16,8 @@ import {
   deleteTiles,
   downloadTiles,
 } from './tiles';
-import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount } from './osm';
-import { renderOsm } from './osmLayer';
+import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount, outdatedOsmCount } from './osm';
+import { renderOsm, rerenderOsm } from './osmLayer';
 import { CATEGORIES, ROUTE_COLORS, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
 
@@ -165,13 +165,6 @@ function editLine(r: Route) {
 /** Default corridor for new downloads: the river itself (±0.5 km). */
 const DEFAULT_BUFFER_KM = 0.5;
 
-function offlineAreas(r: Route): OfflineArea[] {
-  const o = r.offline;
-  if (!o) return [];
-  // Downloads made before areas were tracked: best guess from the current line.
-  return o.areas ?? [{ coords: r.coords, bufferKm: o.bufferKm, maxZoom: o.maxZoom, osm: o.osmTiles != null }];
-}
-
 function areaData(areas: OfflineArea[]) {
   const urls = new Set<string>();
   const osm = new Set<string>();
@@ -260,6 +253,18 @@ function openOffline(r: Route) {
   startBtn.textContent = 'Download';
   updateEstimate();
   offlineDialog.showModal();
+  if (r.offline) {
+    const keys = offlineAreas(r)
+      .filter((a) => a.osm)
+      .flatMap((a) => corridorTileCoords(a.coords, a.bufferKm, OSM_ZOOM, OSM_ZOOM))
+      .map((t) => `${t.z}/${t.x}/${t.y}`);
+    void outdatedOsmCount(keys).then((n) => {
+      if (n && offlineRoute === r && !abort) {
+        $('offline-status').textContent =
+          'Trail & park data for this route was saved by an older version. Tap Download to update it (adds city parks and more parking).';
+      }
+    });
+  }
 }
 
 async function runDownload() {
@@ -319,6 +324,7 @@ async function runDownload() {
         ? { ...r.offline, areas: [...offlineAreas(r).filter((a) => !sameArea(a)), area] }
         : { areas: [area], bufferKm: area.bufferKm, maxZoom: area.maxZoom, tiles: 0, failed: 0, partial: true, downloadedAt: new Date().toISOString() };
       await saveRoute(r);
+      rerenderOsm();
       status('Download cancelled. Everything saved so far is kept.');
       return;
     }
@@ -333,6 +339,7 @@ async function runDownload() {
       downloadedAt: new Date().toISOString(),
     };
     await saveRoute(r);
+    rerenderOsm();
     const problems = [
       tiles.failed && `${tiles.failed} map tile(s) failed`,
       osm?.error && `trail & park data unavailable (${osm.error})`,

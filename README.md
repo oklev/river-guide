@@ -24,7 +24,10 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 
 **Trails, parks & campsites overlay**
 - When you save a route offline, the app can also save OpenStreetMap data for the same corridor. This is on by default.
-- The data shows as a layer you can toggle: shaded park and protected areas with name labels, footpaths and tracks (tap a named trail to see its name), and icons for campsites, shelters, marinas, viewpoints, restrooms, drinking water, and parking inside parks.
+- The data shows as a layer you can toggle: shaded parks (city parks as well as national, state and protected areas) with name labels, footpaths and tracks (tap a named trail to see its name), and icons for campsites, shelters, marinas, viewpoints, restrooms and drinking water.
+- Parking inside parks or within 300 m of a route shows from zoom 14. Other parking appears at zoom 16.
+- The overlay is trimmed to the corridors you saved. The underlying data tiles are about 2 km wide, so without trimming a narrow corridor would still show features up to 2 km away.
+- Raw data tiles are stored alongside the decoded features, so decoding improvements apply without re-downloading.
 - **Add as my point** in an icon's popup turns that feature into one of your own editable points.
 - It works anywhere OpenStreetMap has coverage, not just Georgia, because only the area around your routes is downloaded.
 

@@ -1,8 +1,8 @@
 import { VectorTile, classifyRings } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
-import { clearStore, count, del, getAll, hasKey, put } from './store';
+import { clearStore, count, del, get, getAll, put } from './store';
 import type { DownloadProgress, TileCoord } from './tiles';
-import type { Category, LatLng, OsmFeature } from './types';
+import type { Category, LatLng, OsmFeature, OsmTile } from './types';
 
 /**
  * Trails, parks and amenities come from OpenFreeMap's OpenStreetMap vector
@@ -14,6 +14,8 @@ export const OSM_ZOOM = 14;
 export const OFM_MAX_TILES = 3000;
 const OFM_PARALLEL = 4;
 const TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
+/** Bump when decodeTile changes; stored tiles are re-decoded from their raw bytes. */
+export const OSM_SCHEMA = 2;
 
 export interface PoiType {
   label: string;
@@ -22,8 +24,11 @@ export interface PoiType {
   category: Category;
   /** Hidden below this zoom to avoid clutter. */
   minZoom: number;
-  /** Only shown inside a park (e.g. trailhead parking, not every office lot). */
-  onlyInParks?: boolean;
+  /**
+   * If set, `minZoom` applies only inside parks and near the river; elsewhere the
+   * feature waits until this zoom (e.g. trailhead parking early, office lots late).
+   */
+  minZoomElsewhere?: number;
 }
 
 /** Keyed by OpenMapTiles `class/subclass` (checked first) or `class`. */
@@ -37,7 +42,7 @@ export const POI_TYPES: Record<string, PoiType> = {
   picnic_site: { label: 'Picnic area', icon: '🧺', category: 'poi', minZoom: 14 },
   toilets: { label: 'Restrooms', icon: '🚻', category: 'poi', minZoom: 13 },
   drinking_water: { label: 'Drinking water', icon: '🚰', category: 'poi', minZoom: 14 },
-  parking: { label: 'Parking', icon: 'P', category: 'poi', minZoom: 14, onlyInParks: true },
+  parking: { label: 'Parking', icon: 'P', category: 'poi', minZoom: 14, minZoomElsewhere: 16 },
 };
 
 export const poiType = (cls: string, sub?: string): PoiType | undefined =>
@@ -108,6 +113,18 @@ export function decodeTile(buf: ArrayBuffer, t: TileCoord): OsmFeature[] {
     }
   }
 
+  const landcover = vt.layers.landcover;
+  for (let i = 0; landcover && i < landcover.length; i++) {
+    const f = landcover.feature(i);
+    if (f.type !== 3 || f.properties.subclass !== 'park') continue;
+    const toLL = projector(f.extent);
+    for (const poly of classifyRings(f.loadGeometry())) {
+      const rings = poly.map((r) => clipRing(r, f.extent));
+      if (rings[0].length < 3) continue;
+      out.push({ kind: 'park', cls: 'park', geom: rings.filter((r) => r.length >= 3).map((r) => r.map(toLL)) });
+    }
+  }
+
   for (const [layerName, kind] of [
     ['transportation', 'path'],
     ['transportation_name', 'trail'],
@@ -129,13 +146,15 @@ export function decodeTile(buf: ArrayBuffer, t: TileCoord): OsmFeature[] {
     const f = pois.feature(i);
     const cls = String(f.properties.class);
     const sub = str(f.properties.subclass);
-    if (f.type !== 1 || !poiType(cls, sub)) continue;
+    const name = str(f.properties.name);
+    const isParkName = cls === 'park' && sub === 'park' && !!name;
+    if (f.type !== 1 || !(isParkName || poiType(cls, sub))) continue;
     const toLL = projector(f.extent);
     for (const part of f.loadGeometry()) {
       for (const p of part) {
         // Skip copies in the tile's buffer zone; the neighbouring tile owns them.
         if (p.x < 0 || p.y < 0 || p.x >= f.extent || p.y >= f.extent) continue;
-        out.push({ kind: 'poi', cls, sub, name: str(f.properties.name), geom: [[toLL(p)]] });
+        out.push({ kind: isParkName ? 'label' : 'poi', cls, sub, name, geom: [[toLL(p)]] });
       }
     }
   }
@@ -180,7 +199,8 @@ export async function downloadOsm(
   const progress: DownloadProgress = { done: 0, total: tiles.length, failed: 0 };
   const todo: TileCoord[] = [];
   for (const t of tiles) {
-    if (await hasKey('osm', `${t.z}/${t.x}/${t.y}`)) progress.done++;
+    const stored = await get('osm', `${t.z}/${t.x}/${t.y}`);
+    if (stored?.raw && stored.v === OSM_SCHEMA) progress.done++;
     else todo.push(t);
   }
   onProgress({ ...progress });
@@ -197,6 +217,8 @@ export async function downloadOsm(
         await put('osm', {
           key: `${t.z}/${t.x}/${t.y}`,
           fetchedAt: new Date().toISOString(),
+          v: OSM_SCHEMA,
+          raw: buf ?? new ArrayBuffer(0),
           features: buf ? decodeTile(buf, t) : [],
         });
       } catch {
@@ -211,7 +233,28 @@ export async function downloadOsm(
   return progress;
 }
 
-export const loadAllOsm = () => getAll('osm');
+/** Load stored tiles, re-decoding any saved by an older decoder that still have their raw bytes. */
+export async function loadAllOsm(): Promise<OsmTile[]> {
+  const tiles = await getAll('osm');
+  for (const t of tiles) {
+    if (t.v === OSM_SCHEMA || !t.raw) continue;
+    const [z, x, y] = t.key.split('/').map(Number);
+    t.features = t.raw.byteLength ? decodeTile(t.raw, { z, x, y }) : [];
+    t.v = OSM_SCHEMA;
+    await put('osm', t);
+  }
+  return tiles;
+}
+
+/** How many of these tiles were saved without raw bytes by an older version (need a re-download). */
+export async function outdatedOsmCount(keys: string[]): Promise<number> {
+  let n = 0;
+  for (const k of keys) {
+    const t = await get('osm', k);
+    if (t && !t.raw) n++;
+  }
+  return n;
+}
 export const clearOsm = () => clearStore('osm');
 export const deleteOsmTiles = (keys: string[]) => Promise.all(keys.map((k) => del('osm', k)));
 export const osmTileCount = () => count('osm');

@@ -64,7 +64,8 @@ export interface Route {
 
 /** A feature extracted from OpenStreetMap vector tiles (via OpenFreeMap). */
 export interface OsmFeature {
-  kind: 'park' | 'path' | 'trail' | 'poi';
+  /** label: a park's name at a point (city parks' outlines carry no name). */
+  kind: 'park' | 'path' | 'trail' | 'poi' | 'label';
   /** OpenMapTiles class, e.g. "national_park", "path", "campsite". */
   cls: string;
   sub?: string;
@@ -77,6 +78,10 @@ export interface OsmTile {
   /** "z/x/y" */
   key: string;
   fetchedAt: string;
+  /** Decoder version that produced `features`; older tiles are re-decoded from `raw`. */
+  v?: number;
+  /** Original vector tile bytes, kept so decoding improvements don't need a re-download. */
+  raw?: ArrayBuffer;
   features: OsmFeature[];
 }
 
