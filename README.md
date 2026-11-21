@@ -21,6 +21,12 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Offline…** on a route downloads USGS topo map tiles along it. You choose the corridor width (±0.5 km to ±10 km) and the level of detail (zoom 14–16).
 - The map reopens at your last view, so after an offline reload it shows your saved area.
 
+**Trails, parks & campsites overlay**
+- When you save a route offline, the app can also save OpenStreetMap data for the same corridor. This is on by default.
+- The data shows as a layer you can toggle: shaded park and protected areas with name labels, footpaths and tracks (tap a named trail to see its name), and icons for campsites, shelters, marinas, viewpoints, restrooms, drinking water, and parking inside parks.
+- **Add as my point** in an icon's popup turns that feature into one of your own editable points.
+- It works anywhere OpenStreetMap has coverage, not just Georgia, because only the area around your routes is downloaded.
+
 **Data**
 - GeoJSON import/export covers both points (Point features) and routes (LineString features).
 
@@ -28,6 +34,11 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 
 - **USGS Topo** (default) comes from The National Map. It's public domain and allows offline downloads.
 - **OpenStreetMap** is available for online browsing only. OSM's tile usage policy forbids bulk or offline downloading, so the app never pre-downloads OSM tiles.
+- **Trails and parks** come from [OpenFreeMap](https://openfreemap.org) vector tiles (OpenStreetMap data, OpenMapTiles schema).
+  - The app fetches zoom-14 tiles only, decodes them in the browser, and stores the extracted features in IndexedDB.
+  - It stays within OpenFreeMap's [offline download terms](https://openfreemap.org/tos/): at most 3,000 tiles or 50 MB per download, and at most 4 parallel requests.
+  - We don't use public Overpass API servers, which have been unreliable.
+  - OpenMapTiles has no boat ramps, put-ins, rapids or dams, so those stay as your own points.
 
 ## Development
 
@@ -52,6 +63,8 @@ Offline storage (Cache Storage, service worker) only works on `https://` or `loc
 | `src/routes.ts` | Route lines, list, popups, details dialog, offline download dialog |
 | `src/routeEditor.ts` | Interactive polyline drawing and editing |
 | `src/tiles.ts` | Offline-aware tile layer, corridor tile planning, downloader |
+| `src/osm.ts` | OpenFreeMap vector tile download and decoding into trail/park/POI features |
+| `src/osmLayer.ts` | Renders the trails, parks & campsites overlay |
 | `src/geo.ts` | Distance, length, project-point-onto-line math |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |

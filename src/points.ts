@@ -137,6 +137,12 @@ function openEditor(point: RiverPoint, isNew: boolean) {
   dialog.showModal();
 }
 
+/** Open the editor for a new, unsaved point (e.g. converted from an OSM feature). */
+export function openNewPoint(init: Pick<RiverPoint, 'lat' | 'lng' | 'name' | 'category' | 'description'>) {
+  const now = new Date().toISOString();
+  openEditor({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, ...init }, true);
+}
+
 export function cancelAddPoint() {
   if (getMode() !== 'add-point') return;
   setMode('idle');
@@ -212,20 +218,7 @@ export function initPoints() {
   map.on('click', (e: L.LeafletMouseEvent) => {
     if (getMode() !== 'add-point') return;
     cancelAddPoint();
-    const now = new Date().toISOString();
-    openEditor(
-      {
-        id: crypto.randomUUID(),
-        name: '',
-        category: 'hazard',
-        description: '',
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
-        createdAt: now,
-        updatedAt: now,
-      },
-      true,
-    );
+    openNewPoint({ name: '', category: 'hazard', description: '', lat: e.latlng.lat, lng: e.latlng.lng });
   });
 
   // Edit button inside popups

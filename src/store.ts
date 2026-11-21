@@ -1,21 +1,23 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { RiverPoint, Route } from './types';
+import type { OsmTile, RiverPoint, Route } from './types';
 
 const DB_NAME = 'river-guide';
 
 interface Stores {
   points: RiverPoint;
   routes: Route;
+  osm: OsmTile;
 }
 type StoreName = keyof Stores;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
-  dbPromise ??= openDB(DB_NAME, 2, {
+  dbPromise ??= openDB(DB_NAME, 3, {
     upgrade(database, oldVersion) {
       if (oldVersion < 1) database.createObjectStore('points', { keyPath: 'id' });
       if (oldVersion < 2) database.createObjectStore('routes', { keyPath: 'id' });
+      if (oldVersion < 3) database.createObjectStore('osm', { keyPath: 'key' });
     },
   });
   return dbPromise;
@@ -31,6 +33,18 @@ export async function put<S extends StoreName>(store: S, value: Stores[S]): Prom
 
 export async function del(store: StoreName, id: string): Promise<void> {
   await (await db()).delete(store, id);
+}
+
+export async function hasKey(store: StoreName, key: string): Promise<boolean> {
+  return (await (await db()).getKey(store, key)) !== undefined;
+}
+
+export async function clearStore(store: StoreName): Promise<void> {
+  await (await db()).clear(store);
+}
+
+export async function count(store: StoreName): Promise<number> {
+  return (await db()).count(store);
 }
 
 export async function putMany<S extends StoreName>(store: S, values: Stores[S][]): Promise<void> {

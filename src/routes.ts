@@ -11,9 +11,12 @@ import {
   USGS_MAX_ZOOM,
   cachedTileCount,
   clearTiles,
+  corridorTileCoords,
   corridorTiles,
   downloadTiles,
 } from './tiles';
+import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, downloadOsm, loadAllOsm, osmTileCount } from './osm';
+import { renderOsm } from './osmLayer';
 import { CATEGORIES, ROUTE_COLORS, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
 
@@ -173,6 +176,7 @@ function openDetails(r: Route, isNew: boolean) {
 const offlineDialog = $<HTMLDialogElement>('offline-dialog');
 const bufferSelect = $<HTMLSelectElement>('offline-buffer');
 const zoomSelect = $<HTMLSelectElement>('offline-zoom');
+const osmCheckbox = $<HTMLInputElement>('offline-osm');
 const progressBar = $<HTMLProgressElement>('offline-progress');
 const startBtn = $<HTMLButtonElement>('offline-start');
 let offlineRoute: Route | null = null;
@@ -182,13 +186,22 @@ function plannedTiles(r: Route) {
   return corridorTiles(r.coords, Number(bufferSelect.value), OFFLINE_MIN_ZOOM, Number(zoomSelect.value));
 }
 
+function plannedOsm(r: Route) {
+  return osmCheckbox.checked ? corridorTileCoords(r.coords, Number(bufferSelect.value), OSM_ZOOM, OSM_ZOOM) : [];
+}
+
+/** Rough average size of an OpenFreeMap z14 tile. */
+const AVG_OSM_BYTES = 40_000;
+
 function updateEstimate() {
   if (!offlineRoute) return;
   const n = plannedTiles(offlineRoute).length;
-  const tooMany = n > MAX_TILES;
+  const m = plannedOsm(offlineRoute).length;
+  const tooMany = n > MAX_TILES || m > OFM_MAX_TILES;
+  const osmPart = m ? ` + ${m.toLocaleString()} trail/park data tiles` : '';
   $('offline-estimate').textContent = tooMany
-    ? `${n.toLocaleString()} tiles is too large. Pick a smaller area or less detail.`
-    : `${n.toLocaleString()} map tiles · about ${fmtBytes(n * AVG_TILE_BYTES)} (tiles already saved are skipped)`;
+    ? `${n.toLocaleString()} map tiles${osmPart} is too large. Pick a smaller area or less detail.`
+    : `${n.toLocaleString()} map tiles${osmPart} · about ${fmtBytes(n * AVG_TILE_BYTES + m * AVG_OSM_BYTES)} (anything already saved is skipped)`;
   startBtn.disabled = tooMany;
 }
 
@@ -213,53 +226,81 @@ async function runDownload() {
     return;
   }
   const urls = plannedTiles(r);
+  const osmTiles = plannedOsm(r);
   const controller = (abort = new AbortController());
+  const status = (msg: string) => ($('offline-status').textContent = msg);
   startBtn.textContent = 'Cancel download';
-  bufferSelect.disabled = zoomSelect.disabled = true;
+  bufferSelect.disabled = zoomSelect.disabled = osmCheckbox.disabled = true;
   progressBar.hidden = false;
-  progressBar.max = urls.length;
+  progressBar.max = urls.length + osmTiles.length;
   progressBar.value = 0;
   // Ask the browser not to evict offline data under storage pressure.
   void navigator.storage?.persist?.();
   try {
-    const result = await downloadTiles(
+    const tiles = await downloadTiles(
       urls,
       (p) => {
         progressBar.value = p.done;
-        $('offline-status').textContent = `Downloading ${p.done.toLocaleString()} / ${p.total.toLocaleString()}…`;
+        status(`Map: ${p.done.toLocaleString()} / ${p.total.toLocaleString()}…`);
       },
       controller.signal,
     );
-    if (controller.signal.aborted) {
-      $('offline-status').textContent = 'Download cancelled. Tiles saved so far are kept.';
-    } else {
-      r.offline = {
-        bufferKm: Number(bufferSelect.value),
-        maxZoom: Number(zoomSelect.value),
-        tiles: result.total,
-        failed: result.failed,
-        downloadedAt: new Date().toISOString(),
-      };
-      await saveRoute(r);
-      $('offline-status').textContent = result.failed
-        ? `Saved, but ${result.failed} tile(s) failed. Try again to fill the gaps.`
-        : `Saved ${result.total.toLocaleString()} tiles. This route works offline now.`;
+    let osm: { total: number; failed: number; error?: string } | null = null;
+    if (osmTiles.length && !controller.signal.aborted) {
+      try {
+        osm = await downloadOsm(
+          osmTiles,
+          (p) => {
+            progressBar.value = urls.length + p.done;
+            status(`Trails & parks: ${p.done.toLocaleString()} / ${p.total.toLocaleString()}…`);
+          },
+          controller.signal,
+        );
+      } catch (err) {
+        if (!controller.signal.aborted) osm = { total: osmTiles.length, failed: osmTiles.length, error: (err as Error).message };
+      }
+      renderOsm(await loadAllOsm());
     }
+    if (controller.signal.aborted) {
+      status('Download cancelled. Everything saved so far is kept.');
+      return;
+    }
+    r.offline = {
+      bufferKm: Number(bufferSelect.value),
+      maxZoom: Number(zoomSelect.value),
+      tiles: tiles.total,
+      failed: tiles.failed,
+      osmTiles: osm?.total,
+      osmFailed: osm?.failed,
+      downloadedAt: new Date().toISOString(),
+    };
+    await saveRoute(r);
+    const problems = [
+      tiles.failed && `${tiles.failed} map tile(s) failed`,
+      osm?.error && `trail & park data unavailable (${osm.error})`,
+      osm && !osm.error && osm.failed && `${osm.failed} trail/park tile(s) failed`,
+    ].filter(Boolean);
+    status(
+      problems.length
+        ? `Saved, but ${problems.join('; ')}. Tap Download again to fill the gaps.`
+        : `Saved${osm ? ' map, trails & parks' : ' map'}. This route works offline now.`,
+    );
   } catch (err) {
-    $('offline-status').textContent = `Download failed: ${(err as Error).message}`;
+    status(`Download failed: ${(err as Error).message}`);
   } finally {
     abort = null;
     startBtn.textContent = 'Download';
-    bufferSelect.disabled = zoomSelect.disabled = false;
+    bufferSelect.disabled = zoomSelect.disabled = osmCheckbox.disabled = false;
     void refreshStorageInfo();
   }
 }
 
 export async function refreshStorageInfo() {
-  const [tiles, est] = await Promise.all([cachedTileCount(), navigator.storage?.estimate?.()]);
+  const [tiles, osm, est] = await Promise.all([cachedTileCount(), osmTileCount(), navigator.storage?.estimate?.()]);
   $('storage-info').textContent =
-    `Offline maps: ${tiles.toLocaleString()} tiles` + (est?.usage ? ` · ${fmtBytes(est.usage)} used` : '');
-  $('clear-tiles').hidden = tiles === 0;
+    `Offline: ${tiles.toLocaleString()} map + ${osm.toLocaleString()} trail tiles` +
+    (est?.usage ? ` · ${fmtBytes(est.usage)}` : '');
+  $('clear-tiles').hidden = tiles + osm === 0;
 }
 
 // ---------- wiring ----------
@@ -318,14 +359,16 @@ export function initRoutes() {
   });
 
   bufferSelect.addEventListener('change', updateEstimate);
+  osmCheckbox.addEventListener('change', updateEstimate);
   zoomSelect.addEventListener('change', updateEstimate);
   startBtn.addEventListener('click', runDownload);
   $('offline-close').addEventListener('click', () => offlineDialog.close());
   offlineDialog.addEventListener('close', () => abort?.abort());
 
   $('clear-tiles').addEventListener('click', async () => {
-    if (!confirm('Delete all downloaded offline maps? Your points and routes are kept.')) return;
-    await clearTiles();
+    if (!confirm('Delete all downloaded offline maps and trail data? Your points and routes are kept.')) return;
+    await Promise.all([clearTiles(), clearOsm()]);
+    renderOsm([]);
     for (const r of state.routes) {
       if (!r.offline) continue;
       delete r.offline;

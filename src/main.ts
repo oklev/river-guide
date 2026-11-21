@@ -7,8 +7,11 @@ import { getAll, putMany } from './store';
 import { fromGeoJSON, toGeoJSON } from './geojson';
 import { initPoints, renderPoints } from './points';
 import { initRoutes, refreshStorageInfo, renderRoutes } from './routes';
+import { initOsmLayer, renderOsm } from './osmLayer';
+import { loadAllOsm } from './osm';
 import { $, prefs } from './ui';
 
+initOsmLayer();
 initPoints();
 initRoutes();
 
@@ -87,7 +90,9 @@ window.addEventListener('offline', syncOnline);
 syncOnline();
 
 // ---------- boot ----------
-[state.points, state.routes] = await Promise.all([getAll('points'), getAll('routes')]);
+const [points, routes, osmTiles] = await Promise.all([getAll('points'), getAll('routes'), loadAllOsm()]);
+[state.points, state.routes] = [points, routes];
+renderOsm(osmTiles);
 renderRoutes();
 renderPoints();
 void refreshStorageInfo();

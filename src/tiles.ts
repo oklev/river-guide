@@ -58,10 +58,16 @@ function latToY(lat: number, n: number) {
   return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n);
 }
 
-/** All tile URLs covering a corridor of `bufferKm` on each side of the line. */
-export function corridorTiles(coords: LatLng[], bufferKm: number, minZoom: number, maxZoom: number): string[] {
+export interface TileCoord {
+  z: number;
+  x: number;
+  y: number;
+}
+
+/** All tiles covering a corridor of `bufferKm` on each side of the line. */
+export function corridorTileCoords(coords: LatLng[], bufferKm: number, minZoom: number, maxZoom: number): TileCoord[] {
   const samples = densify(coords, bufferKm / 2);
-  const urls = new Set<string>();
+  const seen = new Map<string, TileCoord>();
   for (let z = minZoom; z <= maxZoom; z++) {
     const n = 2 ** z;
     for (const [lat, lng] of samples) {
@@ -71,10 +77,15 @@ export function corridorTiles(coords: LatLng[], bufferKm: number, minZoom: numbe
       const x1 = lngToX(lng + dLng, n);
       const y0 = latToY(lat + dLat, n);
       const y1 = latToY(lat - dLat, n);
-      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.add(tileUrl(z, x, y));
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) seen.set(`${z}/${x}/${y}`, { z, x, y });
     }
   }
-  return [...urls];
+  return [...seen.values()];
+}
+
+/** USGS topo tile URLs covering the corridor. */
+export function corridorTiles(coords: LatLng[], bufferKm: number, minZoom: number, maxZoom: number): string[] {
+  return corridorTileCoords(coords, bufferKm, minZoom, maxZoom).map(({ z, x, y }) => tileUrl(z, x, y));
 }
 
 export interface DownloadProgress {

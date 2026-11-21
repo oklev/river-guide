@@ -209,3 +209,20 @@ body.sidebar-open #app { grid-template-columns: var(--sidebar-w) 1fr; }
   padding: 2px 6px; border-radius: 4px; background: #f39c12; color: #fff;
 }
 body.offline .offline-badge { display: inline-block; }
+
+/* ---------- v0.3: OpenStreetMap trails & parks overlay ---------- */
+.check-row { flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--fg) !important; font-size: 14px !important; }
+.osm-poi {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: grid; place-items: center;
+  background: #fffdf6; border: 1px solid #8d6e63;
+  font-size: 13px; font-weight: 700; color: #1565c0; line-height: 1;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+.osm-label { pointer-events: none; }
+.osm-label span {
+  position: absolute; transform: translate(-50%, -50%);
+  white-space: nowrap; font-size: 12px; font-weight: 600; font-style: italic;
+  color: #1b5e20;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff;
+}

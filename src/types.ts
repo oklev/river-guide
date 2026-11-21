@@ -30,6 +30,9 @@ export interface OfflineInfo {
   maxZoom: number;
   tiles: number;
   failed: number;
+  /** OpenStreetMap trail/park data tiles saved for this route, if requested. */
+  osmTiles?: number;
+  osmFailed?: number;
   downloadedAt: string;
   /** Route line was edited after the download, so the saved area may not cover it. */
   stale?: boolean;
@@ -45,6 +48,24 @@ export interface Route {
   offline?: OfflineInfo;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A feature extracted from OpenStreetMap vector tiles (via OpenFreeMap). */
+export interface OsmFeature {
+  kind: 'park' | 'path' | 'trail' | 'poi';
+  /** OpenMapTiles class, e.g. "national_park", "path", "campsite". */
+  cls: string;
+  sub?: string;
+  name?: string;
+  /** park: polygon rings · path/trail: line parts · poi: [[point]] */
+  geom: LatLng[][];
+}
+
+export interface OsmTile {
+  /** "z/x/y" */
+  key: string;
+  fetchedAt: string;
+  features: OsmFeature[];
 }
 
 export interface CategoryInfo {

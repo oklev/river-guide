@@ -37,5 +37,5 @@ const baseLayers: Record<string, L.TileLayer> = {
 
 const saved = prefs.get('baseLayer');
 (baseLayers[saved ?? ''] ?? Object.values(baseLayers)[0]).addTo(map);
-L.control.layers(baseLayers, undefined, { position: 'topright' }).addTo(map);
+export const layersControl = L.control.layers(baseLayers, undefined, { position: 'topright' }).addTo(map);
 map.on('baselayerchange', (e: L.LayersControlEvent) => prefs.set('baseLayer', e.name));
