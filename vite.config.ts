@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     VitePWA({
+      // The Android app ships its files inside the APK; no service worker needed.
+      disable: mode === 'android',
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
@@ -22,4 +24,4 @@ export default defineConfig({
       },
     }),
   ],
-});
+}));

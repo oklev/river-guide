@@ -57,6 +57,21 @@ npm run preview  # serve the production build, with service worker, on localhost
 
 Offline storage (Cache Storage, service worker) only works on `https://` or `localhost`. To test on a phone, deploy to an https host instead of opening the dev server by LAN IP.
 
+### Android app
+
+The same web code is wrapped with [Capacitor](https://capacitorjs.com). On Android, track recording uses a foreground location service (the `@capacitor-community/background-geolocation` plugin), so it keeps working with the screen off. A notification shows while it's recording.
+
+You need JDK 21 and the Android SDK (platform 36, build-tools 36.1). Android Studio isn't required. Point `android/local.properties` at the SDK (`sdk.dir=C\:/Users/<you>/AppData/Local/Android/Sdk`) and set `JAVA_HOME` to the JDK, then run:
+
+```sh
+npm run build:android                        # web build (no service worker) + cap sync
+cd android && ./gradlew assembleDebug        # → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install the APK by copying it to the phone and opening it (allow "Install unknown apps"), or with `adb install -r app-debug.apk` over USB debugging.
+
+Debug builds are signed with `~/.android/debug.keystore`. Updates must be signed with the same key, or Android will refuse to install them over the existing app. Uninstalling to get around that deletes the app's data.
+
 ## Code layout
 
 | File | Purpose |
@@ -79,3 +94,4 @@ Offline storage (Cache Storage, service worker) only works on `https://` or `loc
 - Live USGS gauge readings for gauge points
 - Photos on points
 - Shared backend so multiple people can edit
+- Read original photo GPS on Android via a native picker (ACCESS_MEDIA_LOCATION) when the WebView picker strips it
