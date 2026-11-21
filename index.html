@@ -16,6 +16,9 @@
         <h1>River Guide <span class="offline-badge">offline</span></h1>
         <div class="topbar-actions">
           <button id="add-point" class="btn primary">+ Add point</button>
+          <button id="photo-here" class="icon-btn" aria-label="Take a photo here" title="Photo here">📷</button>
+          <input id="photo-here-input" type="file" accept="image/*" capture="environment" hidden />
+          <button id="photo-badge" class="badge" title="Photos to review" hidden>0</button>
           <button id="locate" class="icon-btn" aria-label="Show my location">◎</button>
         </div>
       </header>
@@ -24,6 +27,7 @@
         <nav class="tabs" role="tablist">
           <button class="tab" role="tab" data-tab="points">Points</button>
           <button class="tab" role="tab" data-tab="routes">Routes</button>
+          <button class="tab" role="tab" data-tab="tracks">Tracks</button>
         </nav>
 
         <section id="tab-points" class="tab-pane" role="tabpanel">
@@ -40,6 +44,24 @@
             <p class="muted small">Trace a run by tapping along the river from put-in to take-out. Then save it for offline use from its popup.</p>
           </div>
           <ul id="route-list" class="item-list"></ul>
+        </section>
+
+        <section id="tab-tracks" class="tab-pane" role="tabpanel" hidden>
+          <div class="sidebar-section stack">
+            <button id="record-toggle" class="btn primary">● Record track</button>
+            <p id="rec-note" class="muted small" hidden>In a browser, recording only works while this page is open and the screen is on. The Android app records in the background.</p>
+            <div class="footer-row">
+              <label class="btn">Import photos
+                <input id="import-photos" type="file" accept="image/*" multiple hidden />
+              </label>
+              <label class="btn">Import GPX
+                <input id="import-gpx" type="file" accept=".gpx,application/gpx+xml" multiple hidden />
+              </label>
+            </div>
+            <button id="review-photos" class="btn" hidden>Review photos</button>
+            <p class="muted small">Photos are placed using their own GPS tag, or by matching the time they were taken to your tracks.</p>
+          </div>
+          <ul id="track-list" class="item-list"></ul>
         </section>
 
         <div class="sidebar-section sidebar-footer">
@@ -60,6 +82,12 @@
       <main id="map"></main>
 
       <div id="hint" class="hint" hidden>Tap the map to place the point · <button id="cancel-add" class="link">Cancel</button></div>
+      <div id="place-hint" class="hint" hidden>Tap the map where the photo was taken · <button id="cancel-place" class="link">Cancel</button></div>
+      <div id="rec-banner" class="rec-banner" hidden>
+        <span class="rec-dot">●</span> Recording <span id="rec-stats"></span>
+        <button id="rec-stop" class="btn small">Stop</button>
+      </div>
+      <div id="toast" class="toast" role="status" hidden></div>
 
       <div id="route-toolbar" class="route-toolbar" hidden>
         <div class="route-toolbar-row">
@@ -93,6 +121,12 @@
             <small id="mile-hint"></small>
           </label>
           <label>Description <textarea name="description" rows="4"></textarea></label>
+          <div class="editor-photos-row">
+            <div id="editor-photos" class="editor-photos"></div>
+            <label class="btn small">+ Photo
+              <input id="editor-photo-input" type="file" accept="image/*" multiple hidden />
+            </label>
+          </div>
           <div class="coords" id="editor-coords"></div>
           <div class="editor-actions">
             <button type="button" id="editor-delete" class="btn danger">Delete</button>
@@ -151,6 +185,26 @@
             <button type="button" id="offline-close" class="btn">Close</button>
             <button type="button" id="offline-start" class="btn primary">Download</button>
           </div>
+        </div>
+      </dialog>
+
+      <dialog id="review-dialog" class="editor review">
+        <div class="dialog-body">
+          <h2>Photos to review</h2>
+          <p class="muted small">Turn photos into points, place ones that couldn't be located, or discard them.</p>
+          <ul id="review-list" class="review-list"></ul>
+          <div class="editor-actions">
+            <span class="spacer"></span>
+            <button type="button" id="review-close" class="btn">Close</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="photo-viewer" class="viewer">
+        <img id="viewer-img" alt="" />
+        <div class="viewer-bar">
+          <span id="viewer-caption" class="small"></span>
+          <button type="button" id="viewer-close" class="btn small">Close</button>
         </div>
       </dialog>
     </div>

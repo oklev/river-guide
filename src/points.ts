@@ -5,12 +5,16 @@ import { del, put } from './store';
 import { KM_PER_MI, nearestRoute } from './geo';
 import { CATEGORIES, SEVERITY_CATEGORIES, type Category, type RiverPoint, type Severity } from './types';
 import { $, escapeHtml, getMode, setMode } from './ui';
+import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
 
 const markers = new Map<string, L.Marker>();
 const visibleCategories = new Set<Category>(Object.keys(CATEGORIES) as Category[]);
 let searchText = '';
 /** Point being edited; `isNew` means it has not been saved yet. */
 let editing: { point: RiverPoint; isNew: boolean } | null = null;
+/** Photos to attach when the editor is saved, and attached ones to detach. */
+let pendingPhotos: string[] = [];
+let detachPhotos: string[] = [];
 
 function iconFor(p: RiverPoint): L.DivIcon {
   const c = CATEGORIES[p.category];
@@ -34,8 +38,19 @@ function popupHtml(p: RiverPoint): string {
       <strong>${escapeHtml(p.name)}</strong>
       <div class="popup-meta">${escapeHtml(meta)}</div>
       ${p.description ? `<p>${escapeHtml(p.description).replace(/\n/g, '<br>')}</p>` : ''}
+      ${photoStrip(p.id)}
       <button class="btn small" data-edit="${p.id}">Edit</button>
     </div>`;
+}
+
+function photoStrip(pointId: string): string {
+  const photos = photosOf(pointId);
+  if (!photos.length) return '';
+  const imgs = photos
+    .slice(0, 4)
+    .map((ph) => `<img src="${thumbUrl(ph)}" alt="" data-view-photo="${ph.id}" />`)
+    .join('');
+  return `<div class="photo-strip">${imgs}${photos.length > 4 ? `<span>+${photos.length - 4}</span>` : ''}</div>`;
 }
 
 function upsertMarker(p: RiverPoint) {
@@ -52,7 +67,10 @@ function upsertMarker(p: RiverPoint) {
     markers.set(p.id, marker);
     m = marker;
   }
-  m.setLatLng([p.lat, p.lng]).setIcon(iconFor(p)).bindPopup(popupHtml(p));
+  // Popup content is built when opened, so newly attached photos always show.
+  m.setLatLng([p.lat, p.lng])
+    .setIcon(iconFor(p))
+    .bindPopup(() => popupHtml(state.points.find((x) => x.id === p.id) ?? p), { maxWidth: 280 });
 }
 
 function matches(p: RiverPoint): boolean {
@@ -121,8 +139,30 @@ function syncSeverityVisibility() {
   $('severity-row').hidden = !SEVERITY_CATEGORIES.includes(field('category').value as Category);
 }
 
-function openEditor(point: RiverPoint, isNew: boolean) {
+function renderEditorPhotos() {
+  if (!editing) return;
+  const ids = [
+    ...photosOf(editing.point.id)
+      .map((ph) => ph.id)
+      .filter((id) => !detachPhotos.includes(id)),
+    ...pendingPhotos,
+  ];
+  $('editor-photos').innerHTML = ids
+    .map((id) => {
+      const ph = state.photos.find((x) => x.id === id);
+      return ph
+        ? `<span class="editor-photo"><img src="${thumbUrl(ph)}" alt="" data-view-photo="${id}" />
+            <button type="button" class="remove" data-remove-photo="${id}" aria-label="Remove photo">×</button></span>`
+        : '';
+    })
+    .join('');
+}
+
+function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = []) {
   editing = { point, isNew };
+  pendingPhotos = photoIds;
+  detachPhotos = [];
+  renderEditorPhotos();
   map.closePopup();
   $('editor-title').textContent = isNew ? 'New point' : 'Edit point';
   field('name').value = point.name;
@@ -138,9 +178,16 @@ function openEditor(point: RiverPoint, isNew: boolean) {
 }
 
 /** Open the editor for a new, unsaved point (e.g. converted from an OSM feature). */
-export function openNewPoint(init: Pick<RiverPoint, 'lat' | 'lng' | 'name' | 'category' | 'description'>) {
+export function openNewPoint(
+  init: Pick<RiverPoint, 'lat' | 'lng' | 'name' | 'category' | 'description'>,
+  opts: { photoIds?: string[] } = {},
+) {
   const now = new Date().toISOString();
-  openEditor({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, ...init }, true);
+  // Points close to a route get their river mile filled in automatically.
+  const hit = nearestRoute(state.routes, [init.lat, init.lng]);
+  const riverMile = hit && hit.offKm <= 0.5 ? Math.round((hit.alongKm / KM_PER_MI) * 10) / 10 : undefined;
+  openEditor({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, riverMile, ...init }, true, opts.photoIds);
+  if (hit && riverMile != null) $('mile-hint').textContent = `From “${hit.route.name}”`;
 }
 
 export function cancelAddPoint() {
@@ -186,6 +233,9 @@ export function initPoints() {
     const i = state.points.findIndex((x) => x.id === p.id);
     if (i >= 0) state.points[i] = p;
     else state.points.push(p);
+    if (pendingPhotos.length) await setPhotoPoint(pendingPhotos, p.id);
+    if (detachPhotos.length) await setPhotoPoint(detachPhotos, undefined);
+    pendingPhotos = detachPhotos = [];
     editing = null;
     dialog.close();
     renderPoints();
@@ -193,12 +243,36 @@ export function initPoints() {
 
   $('editor-cancel').addEventListener('click', () => {
     editing = null;
+    pendingPhotos = detachPhotos = [];
     dialog.close();
   });
 
+  $<HTMLInputElement>('editor-photo-input').addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = '';
+    if (!editing || !files.length) return;
+    const added = await importFiles(files);
+    pendingPhotos = [...pendingPhotos, ...added.map((ph) => ph.id)];
+    renderEditorPhotos();
+  });
+
+  $('editor-photos').addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-remove-photo]')?.dataset.removePhoto;
+    if (!id || !editing) return;
+    // Removed photos go back to "Photos to review" rather than being deleted.
+    if (pendingPhotos.includes(id)) pendingPhotos = pendingPhotos.filter((x) => x !== id);
+    else detachPhotos = [...detachPhotos, id];
+    renderEditorPhotos();
+  });
+
   $('editor-delete').addEventListener('click', async () => {
-    if (!editing || !confirm(`Delete “${editing.point.name}”?`)) return;
+    if (!editing) return;
     const id = editing.point.id;
+    const photoIds = photosOf(id).map((ph) => ph.id);
+    const extra = photoIds.length ? ` Its ${photoIds.length} photo(s) will be deleted too.` : '';
+    if (!confirm(`Delete “${editing.point.name}”?${extra}`)) return;
+    await deletePhotos(photoIds);
     await del('points', id);
     state.points = state.points.filter((p) => p.id !== id);
     editing = null;
@@ -208,7 +282,7 @@ export function initPoints() {
 
   // Add mode
   $('add-point').addEventListener('click', () => {
-    if (getMode() === 'route') return; // finish or cancel the route first
+    if (getMode() === 'route' || getMode() === 'place') return; // finish that first
     if (getMode() === 'add-point') return cancelAddPoint();
     setMode('add-point');
     $('hint').hidden = false;

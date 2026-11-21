@@ -1,8 +1,11 @@
-import type { OfflineArea, RiverPoint, Route } from './types';
+import type { OfflineArea, Photo, RiverPoint, Route, Track } from './types';
 
 export const state = {
   points: [] as RiverPoint[],
   routes: [] as Route[],
+  tracks: [] as Track[],
+  /** Photo metadata and thumbnails; full images live in the photoBlobs store. */
+  photos: [] as Photo[],
 };
 
 /** Every corridor downloaded for a route. */

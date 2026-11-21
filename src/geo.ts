@@ -56,6 +56,38 @@ export function nearestRoute(routes: Route[], p: LatLng) {
   return best;
 }
 
+/** Douglas–Peucker line simplification; `toleranceM` is the max deviation allowed, in metres. */
+export function simplify(coords: LatLng[], toleranceM: number): LatLng[] {
+  if (coords.length < 3) return coords.slice();
+  const lat0 = rad(coords[0][0]);
+  const xy = coords.map(([lat, lng]) => [lng * 111_320 * Math.cos(lat0), lat * 110_574] as const);
+  const keep = new Uint8Array(coords.length);
+  keep[0] = keep[coords.length - 1] = 1;
+  const stack: [number, number][] = [[0, coords.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const [ax, ay] = xy[a];
+    const [bx, by] = xy[b];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    let maxD = 0;
+    let idx = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = Math.abs(dy * (xy[i][0] - ax) - dx * (xy[i][1] - ay)) / len;
+      if (d > maxD) {
+        maxD = d;
+        idx = i;
+      }
+    }
+    if (idx >= 0 && maxD > toleranceM) {
+      keep[idx] = 1;
+      stack.push([a, idx], [idx, b]);
+    }
+  }
+  return coords.filter((_, i) => keep[i]);
+}
+
 /** Insert intermediate points so no gap along the line exceeds `spacingKm`. */
 export function densify(coords: LatLng[], spacingKm: number): LatLng[] {
   if (coords.length < 2) return coords.slice();

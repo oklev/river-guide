@@ -18,7 +18,7 @@ import {
 } from './tiles';
 import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount, outdatedOsmCount } from './osm';
 import { renderOsm, rerenderOsm } from './osmLayer';
-import { CATEGORIES, ROUTE_COLORS, type OfflineArea, type Route } from './types';
+import { CATEGORIES, ROUTE_COLORS, type LatLng, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
 
 /** Above this, the download button is disabled; keeps a stray 50 km buffer from pulling gigabytes. */
@@ -132,20 +132,25 @@ function startNewRoute() {
   closeSidebarOnMobile();
   const color = ROUTE_COLORS[state.routes.length % ROUTE_COLORS.length];
   editor.start([], color, async (coords) => {
-    if (!coords) return;
-    const now = new Date().toISOString();
-    const r: Route = {
-      id: crypto.randomUUID(),
-      name: `Route ${state.routes.length + 1}`,
-      description: '',
-      color,
-      coords,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await saveRoute(r); // save right away so the traced line is never lost
-    openDetails(r, true);
+    if (coords) await createRoute(coords, undefined, color);
   });
+}
+
+/** Save a new route (e.g. traced by hand or made from a GPS track) and ask for its name. */
+export async function createRoute(coords: LatLng[], name?: string, color?: string) {
+  const now = new Date().toISOString();
+  const r: Route = {
+    id: crypto.randomUUID(),
+    name: name ?? `Route ${state.routes.length + 1}`,
+    description: '',
+    color: color ?? ROUTE_COLORS[state.routes.length % ROUTE_COLORS.length],
+    coords,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await saveRoute(r); // save right away so the line is never lost
+  focusRoute(r);
+  openDetails(r, true);
 }
 
 function editLine(r: Route) {

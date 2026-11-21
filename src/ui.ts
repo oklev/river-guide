@@ -30,7 +30,7 @@ export const prefs = {
   },
 };
 
-export type Mode = 'idle' | 'add-point' | 'route';
+export type Mode = 'idle' | 'add-point' | 'route' | 'place';
 let mode: Mode = 'idle';
 export const getMode = () => mode;
 export const setMode = (m: Mode) => {

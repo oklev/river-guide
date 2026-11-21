@@ -9,11 +9,16 @@ import { initPoints, renderPoints } from './points';
 import { initRoutes, refreshStorageInfo, renderRoutes } from './routes';
 import { initOsmLayer, renderOsm } from './osmLayer';
 import { loadAllOsm } from './osm';
+import { finishInterruptedTracks, initTracks, renderTracks } from './tracks';
+import { initPhotos, renderPhotos } from './photos';
+import { saveFile } from './platform';
 import { $, prefs } from './ui';
 
 initOsmLayer();
 initPoints();
 initRoutes();
+initTracks();
+initPhotos();
 
 // ---------- sidebar ----------
 $('toggle-sidebar').addEventListener('click', () => {
@@ -34,17 +39,14 @@ document.querySelector('.tabs')!.addEventListener('click', (e) => {
   const tab = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab;
   if (tab) showTab(tab);
 });
-showTab(prefs.get('tab') === 'routes' ? 'routes' : 'points');
+const savedTab = prefs.get('tab');
+showTab(savedTab === 'routes' || savedTab === 'tracks' ? savedTab : 'points');
 
 // ---------- import / export ----------
 $('export').addEventListener('click', () => {
   const data = toGeoJSON(state.points, state.routes);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/geo+json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `river-guide-${new Date().toISOString().slice(0, 10)}.geojson`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const name = `river-guide-${new Date().toISOString().slice(0, 10)}.geojson`;
+  void saveFile(name, JSON.stringify(data, null, 2), 'application/geo+json');
 });
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
@@ -90,9 +92,18 @@ window.addEventListener('offline', syncOnline);
 syncOnline();
 
 // ---------- boot ----------
-const [points, routes, osmTiles] = await Promise.all([getAll('points'), getAll('routes'), loadAllOsm()]);
-[state.points, state.routes] = [points, routes];
+const [points, routes, tracks, photos, osmTiles] = await Promise.all([
+  getAll('points'),
+  getAll('routes'),
+  getAll('tracks'),
+  getAll('photos'),
+  loadAllOsm(),
+]);
+Object.assign(state, { points, routes, tracks, photos });
+await finishInterruptedTracks();
 renderOsm(osmTiles);
 renderRoutes();
+renderTracks();
+renderPhotos();
 renderPoints();
 void refreshStorageInfo();

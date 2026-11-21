@@ -104,3 +104,44 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
 export const SEVERITY_CATEGORIES: Category[] = ['hazard', 'rapid'];
 
 export const ROUTE_COLORS = ['#1565c0', '#d81b60', '#00897b', '#f4511e', '#5e35b1', '#6d4c41'];
+
+/** [lat, lng, time (ms since epoch), accuracy (m) or -1 if unknown] */
+export type TrackFix = [number, number, number, number];
+
+export interface Track {
+  id: string;
+  name: string;
+  /** Ordered by time. */
+  fixes: TrackFix[];
+  source: 'recorded' | 'gpx';
+  /** True while this device is still recording it. */
+  recording?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** How a photo's location was determined. */
+export type PhotoLocSource = 'exif' | 'track' | 'gps' | 'manual';
+
+export interface Photo {
+  id: string;
+  /** Attached point, or undefined while it's a draft awaiting review. */
+  pointId?: string;
+  /** Small JPEG thumbnail (long edge ≤ 240 px). */
+  thumb: Blob;
+  fileName: string;
+  takenAt?: number;
+  lat?: number;
+  lng?: number;
+  locSource?: PhotoLocSource;
+  /** For track matches: seconds to the nearest fix used. */
+  matchGapSec?: number;
+  createdAt: string;
+}
+
+/** Full-size image, stored separately so listing photos doesn't load every image. */
+export interface PhotoBlob {
+  id: string;
+  /** Resized JPEG (long edge ≤ 1600 px). */
+  blob: Blob;
+}
