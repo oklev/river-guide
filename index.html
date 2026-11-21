@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f4c5c" />
+    <title>River Guide</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <button id="toggle-sidebar" class="icon-btn" aria-label="Toggle list">☰</button>
+        <h1>River Guide</h1>
+        <div class="topbar-actions">
+          <button id="add-point" class="btn primary">+ Add point</button>
+          <button id="locate" class="icon-btn" aria-label="Show my location">◎</button>
+        </div>
+      </header>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-section">
+          <input id="search" type="search" placeholder="Search points…" />
+          <div id="filters" class="filters"></div>
+        </div>
+        <ul id="point-list" class="point-list"></ul>
+        <div class="sidebar-section sidebar-footer">
+          <button id="export" class="btn">Export GeoJSON</button>
+          <label class="btn">
+            Import GeoJSON
+            <input id="import" type="file" accept=".geojson,.json,application/geo+json" hidden />
+          </label>
+        </div>
+      </aside>
+      <main id="map"></main>
+      <div id="hint" class="hint" hidden>Tap the map to place the point · <button id="cancel-add" class="link">Cancel</button></div>
+      <dialog id="editor" class="editor">
+        <form id="editor-form" method="dialog">
+          <h2 id="editor-title">New point</h2>
+          <label>Name <input name="name" required maxlength="120" /></label>
+          <label>Category <select name="category"></select></label>
+          <label id="severity-row">Severity
+            <select name="severity">
+              <option value="">—</option>
+              <option value="low">Low — caution</option>
+              <option value="medium">Medium — scout</option>
+              <option value="high">High — portage / avoid</option>
+            </select>
+          </label>
+          <label>River mile <input name="riverMile" type="number" step="0.1" min="0" /></label>
+          <label>Description <textarea name="description" rows="4"></textarea></label>
+          <div class="coords" id="editor-coords"></div>
+          <div class="editor-actions">
+            <button type="button" id="editor-delete" class="btn danger">Delete</button>
+            <span class="spacer"></span>
+            <button type="button" id="editor-cancel" class="btn">Cancel</button>
+            <button type="submit" class="btn primary">Save</button>
+          </div>
+        </form>
+      </dialog>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
