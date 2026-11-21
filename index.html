@@ -4,34 +4,74 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f4c5c" />
+    <meta name="description" content="Editable paddling map: hazards, access points, routes and offline maps." />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
     <title>River Guide</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <button id="toggle-sidebar" class="icon-btn" aria-label="Toggle list">☰</button>
-        <h1>River Guide</h1>
+        <h1>River Guide <span class="offline-badge">offline</span></h1>
         <div class="topbar-actions">
           <button id="add-point" class="btn primary">+ Add point</button>
           <button id="locate" class="icon-btn" aria-label="Show my location">◎</button>
         </div>
       </header>
+
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-section">
-          <input id="search" type="search" placeholder="Search points…" />
-          <div id="filters" class="filters"></div>
-        </div>
-        <ul id="point-list" class="point-list"></ul>
+        <nav class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="points">Points</button>
+          <button class="tab" role="tab" data-tab="routes">Routes</button>
+        </nav>
+
+        <section id="tab-points" class="tab-pane" role="tabpanel">
+          <div class="sidebar-section">
+            <input id="search" type="search" placeholder="Search points…" />
+            <div id="filters" class="filters"></div>
+          </div>
+          <ul id="point-list" class="item-list"></ul>
+        </section>
+
+        <section id="tab-routes" class="tab-pane" role="tabpanel" hidden>
+          <div class="sidebar-section">
+            <button id="new-route" class="btn primary">+ New route</button>
+            <p class="muted small">Trace a run by tapping along the river from put-in to take-out. Then save it for offline use from its popup.</p>
+          </div>
+          <ul id="route-list" class="item-list"></ul>
+        </section>
+
         <div class="sidebar-section sidebar-footer">
-          <button id="export" class="btn">Export GeoJSON</button>
-          <label class="btn">
-            Import GeoJSON
-            <input id="import" type="file" accept=".geojson,.json,application/geo+json" hidden />
-          </label>
+          <div class="footer-row">
+            <button id="export" class="btn">Export GeoJSON</button>
+            <label class="btn">
+              Import GeoJSON
+              <input id="import" type="file" accept=".geojson,.json,application/geo+json" hidden />
+            </label>
+          </div>
+          <div class="storage muted small">
+            <span id="storage-info"></span>
+            <button id="clear-tiles" class="link" hidden>Clear</button>
+          </div>
         </div>
       </aside>
+
       <main id="map"></main>
+
       <div id="hint" class="hint" hidden>Tap the map to place the point · <button id="cancel-add" class="link">Cancel</button></div>
+
+      <div id="route-toolbar" class="route-toolbar" hidden>
+        <div class="route-toolbar-row">
+          <span id="route-status"></span>
+          <span class="spacer"></span>
+          <button id="route-undo" class="btn small">Undo</button>
+          <button id="route-cancel" class="btn small">Cancel</button>
+          <button id="route-finish" class="btn small primary">Finish</button>
+        </div>
+        <div class="muted small">Tap the map to extend · drag a point to move it · tap a point to remove it · drag a small ○ to add a bend</div>
+      </div>
+
       <dialog id="editor" class="editor">
         <form id="editor-form" method="dialog">
           <h2 id="editor-title">New point</h2>
@@ -45,7 +85,13 @@
               <option value="high">High — portage / avoid</option>
             </select>
           </label>
-          <label>River mile <input name="riverMile" type="number" step="0.1" min="0" /></label>
+          <label>River mile
+            <span class="input-row">
+              <input name="riverMile" type="number" step="0.1" min="0" />
+              <button type="button" id="mile-from-route" class="btn small">From route</button>
+            </span>
+            <small id="mile-hint"></small>
+          </label>
           <label>Description <textarea name="description" rows="4"></textarea></label>
           <div class="coords" id="editor-coords"></div>
           <div class="editor-actions">
@@ -55,6 +101,52 @@
             <button type="submit" class="btn primary">Save</button>
           </div>
         </form>
+      </dialog>
+
+      <dialog id="route-dialog" class="editor">
+        <form id="route-form" method="dialog">
+          <h2 id="route-dialog-title">Edit route</h2>
+          <label>Name <input name="name" required maxlength="120" /></label>
+          <label>Color <input name="color" type="color" /></label>
+          <label>Description <textarea name="description" rows="4" placeholder="Put-in, take-out, difficulty, best water levels…"></textarea></label>
+          <div class="coords" id="route-length"></div>
+          <div class="editor-actions">
+            <button type="button" id="route-delete" class="btn danger">Delete</button>
+            <span class="spacer"></span>
+            <button type="button" id="route-cancel-details" class="btn">Cancel</button>
+            <button type="submit" class="btn primary">Save</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="offline-dialog" class="editor">
+        <div class="dialog-body">
+          <h2 id="offline-title">Save for offline</h2>
+          <p class="muted small">Downloads USGS topo map tiles along the route so the map works without signal. Your points and routes are always available offline.</p>
+          <label>Area to save
+            <select id="offline-buffer">
+              <option value="0.5">River corridor (±0.5 km)</option>
+              <option value="2">Nearby area (±2 km)</option>
+              <option value="5">Surrounding area (±5 km)</option>
+              <option value="10">Wide area (±10 km)</option>
+            </select>
+          </label>
+          <label>Detail
+            <select id="offline-zoom">
+              <option value="14">Overview</option>
+              <option value="15">Detailed</option>
+              <option value="16">Most detailed</option>
+            </select>
+          </label>
+          <div id="offline-estimate" class="small"></div>
+          <progress id="offline-progress" hidden></progress>
+          <div id="offline-status" class="small" role="status"></div>
+          <div class="editor-actions">
+            <span class="spacer"></span>
+            <button type="button" id="offline-close" class="btn">Close</button>
+            <button type="button" id="offline-start" class="btn primary">Download</button>
+          </div>
+        </div>
       </dialog>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -9,6 +9,9 @@ export type Category =
 
 export type Severity = 'low' | 'medium' | 'high';
 
+/** [lat, lng] */
+export type LatLng = [number, number];
+
 export interface RiverPoint {
   id: string;
   name: string;
@@ -18,6 +21,28 @@ export interface RiverPoint {
   lng: number;
   riverMile?: number;
   severity?: Severity;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfflineInfo {
+  bufferKm: number;
+  maxZoom: number;
+  tiles: number;
+  failed: number;
+  downloadedAt: string;
+  /** Route line was edited after the download, so the saved area may not cover it. */
+  stale?: boolean;
+}
+
+export interface Route {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  /** Ordered from put-in (mile 0) to take-out. */
+  coords: LatLng[];
+  offline?: OfflineInfo;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,3 +64,5 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
 };
 
 export const SEVERITY_CATEGORIES: Category[] = ['hazard', 'rapid'];
+
+export const ROUTE_COLORS = ['#1565c0', '#d81b60', '#00897b', '#f4511e', '#5e35b1', '#6d4c41'];
