@@ -70,7 +70,19 @@ cd android && ./gradlew assembleDebug        # → android/app/build/outputs/apk
 
 Install the APK by copying it to the phone and opening it (allow "Install unknown apps"), or with `adb install -r app-debug.apk` over USB debugging.
 
-Debug builds are signed with `~/.android/debug.keystore`. Updates must be signed with the same key, or Android will refuse to install them over the existing app. Uninstalling to get around that deletes the app's data.
+### Releases
+
+Pushing a version tag builds a signed APK in GitHub Actions and publishes it as a GitHub release ([.github/workflows/android-release.yml](.github/workflows/android-release.yml)):
+
+```sh
+npm version 0.6.0 --no-git-tag-version   # bump package.json; the app's versionCode is derived from it
+git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
+```
+
+- The tag must match `package.json`.
+- The workflow needs two repository secrets: `ANDROID_KEYSTORE_BASE64` (the release keystore, base64-encoded) and `ANDROID_KEYSTORE_PASSWORD`.
+- Locally, Gradle reads the key from `~/.android/river-guide-release/keystore.properties`. With that file present, debug builds are signed with the same key, so they install over released versions.
+- **Back up the keystore.** Android only accepts updates signed with the same key. If the key is lost, the only way to install a new version is to uninstall the app, which deletes its data.
 
 ## Code layout
 

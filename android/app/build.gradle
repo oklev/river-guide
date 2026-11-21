@@ -1,14 +1,45 @@
 apply plugin: 'com.android.application'
 
+import groovy.json.JsonSlurper
+
+// App version comes from package.json: "1.2.3" -> versionName 1.2.3, versionCode 10203.
+def appVersion = new JsonSlurper().parse(file('../../package.json')).version as String
+def (vMajor, vMinor, vPatch) = appVersion.tokenize('.-').take(3).collect { it as int }
+def appVersionCode = vMajor * 10000 + vMinor * 100 + vPatch
+
+// Release signing key, never committed. CI passes it via environment variables;
+// locally it's read from a properties file outside the repo.
+def signingProps = new Properties()
+def localKeystoreProps = new File(System.getProperty('user.home'), '.android/river-guide-release/keystore.properties')
+if (System.getenv('ANDROID_KEYSTORE_FILE')) {
+    signingProps.storeFile = System.getenv('ANDROID_KEYSTORE_FILE')
+    signingProps.storePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+    signingProps.keyAlias = System.getenv('ANDROID_KEY_ALIAS') ?: 'riverguide'
+    signingProps.keyPassword = System.getenv('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+} else if (localKeystoreProps.exists()) {
+    localKeystoreProps.withInputStream { signingProps.load(it) }
+}
+def hasReleaseKey = signingProps.storeFile != null
+
 android {
     namespace = "io.github.oklev.riverguide"
     compileSdk = rootProject.ext.compileSdkVersion
+    if (hasReleaseKey) {
+        signingConfigs {
+            release {
+                storeFile file(signingProps.storeFile)
+                storePassword signingProps.storePassword
+                keyAlias signingProps.keyAlias
+                keyPassword signingProps.keyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId "io.github.oklev.riverguide"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,6 +51,11 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseKey) signingConfig signingConfigs.release
+        }
+        debug {
+            // Sign local debug builds with the same key so they install over releases.
+            if (hasReleaseKey) signingConfig signingConfigs.release
         }
     }
 }
