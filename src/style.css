@@ -296,3 +296,22 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .item-list.grow-0 { flex: none; overflow: visible; }
 #tab-routes { overflow-y: auto; }
 .along small { color: #61727a; }
+
+/* ---------- point observations ---------- */
+.editor fieldset.obs { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.editor fieldset.obs legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
+.obs-row { display: flex; gap: 10px; }
+.obs-row > label { flex: 1; min-width: 0; }
+.obs-label { font-size: 12px; font-weight: 600; color: #1565c0; margin: 2px 0 4px; }
+.history-title { font-size: 12px; font-weight: 600; color: #61727a; margin-top: 8px; }
+.history-list { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 12px; }
+.history-list li { padding: 3px 0; border-top: 1px dashed #d5dee2; }
+.history-list .when { font-weight: 600; }
+.history-list em { font-style: normal; font-size: 11px; padding: 0 5px; border-radius: 3px; background: #eee; }
+.history-list em.sev-high { background: #c0392b; color: #fff; }
+.history-list em.sev-medium { background: #e67e22; color: #fff; }
+.editor .history-list { max-height: 160px; overflow-y: auto; color: var(--fg); }
+.editor .history-list li { border-top-color: var(--border); }
+.danger-link { color: var(--danger) !important; font-size: 12px; margin-left: 6px; }
+.popup-updated { font-size: 11px; color: #8a9aa1; margin: 4px 0; }
+.editor-actions { flex-wrap: wrap; }

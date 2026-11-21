@@ -3,15 +3,35 @@ import { map } from './map';
 import { state } from './state';
 import { del, put } from './store';
 import { KM_PER_MI, nearestRoute } from './geo';
-import { CATEGORIES, SEVERITY_CATEGORIES, type Category, type RiverPoint, type Severity } from './types';
+import {
+  CATEGORIES,
+  SEVERITY_CATEGORIES,
+  type Category,
+  type PointObservation,
+  type RiverPoint,
+  type Severity,
+  type WaterLevel,
+} from './types';
+import {
+  addObservation,
+  editCurrent,
+  fmtDay,
+  fmtMonth,
+  observationLabel,
+  removeHistory,
+  today,
+} from './observations';
 import { $, escapeHtml, getMode, setMode } from './ui';
 import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
 
 const markers = new Map<string, L.Marker>();
 const visibleCategories = new Set<Category>(Object.keys(CATEGORIES) as Category[]);
 let searchText = '';
-/** Point being edited; `isNew` means it has not been saved yet. */
-let editing: { point: RiverPoint; isNew: boolean } | null = null;
+/**
+ * Point being edited; `isNew` means it has not been saved yet. In "observe"
+ * mode the editor records a new dated observation instead of editing in place.
+ */
+let editing: { point: RiverPoint; isNew: boolean; mode: 'edit' | 'observe' } | null = null;
 /** Photos to attach when the editor is saved, and attached ones to detach. */
 let pendingPhotos: string[] = [];
 let detachPhotos: string[] = [];
@@ -37,10 +57,32 @@ function popupHtml(p: RiverPoint): string {
     <div class="popup">
       <strong>${escapeHtml(p.name)}</strong>
       <div class="popup-meta">${escapeHtml(meta)}</div>
+      ${p.observedAt || p.waterLevel || p.gauge ? `<div class="obs-label">Observed ${escapeHtml(observationLabel({ ...p, recordedAt: p.updatedAt }))}</div>` : ''}
       ${p.description ? `<p>${escapeHtml(p.description).replace(/\n/g, '<br>')}</p>` : ''}
+      ${historyHtml(p)}
       ${photoStrip(p.id)}
-      <button class="btn small" data-edit="${p.id}">Edit</button>
+      <div class="popup-updated">Updated ${new Date(p.updatedAt).toLocaleDateString([], { dateStyle: 'medium' })}</div>
+      <div class="popup-actions">
+        <button class="btn small" data-edit="${p.id}">Edit</button>
+        <button class="btn small" data-observe="${p.id}">+ New observation</button>
+      </div>
     </div>`;
+}
+
+/** Earlier observations, newest first (up to 4 in a popup). */
+function historyHtml(p: RiverPoint): string {
+  const h = p.history ?? [];
+  if (!h.length) return '';
+  const short = (s: string) => (s.length > 90 ? `${s.slice(0, 88)}…` : s);
+  const rows = h
+    .slice(0, 4)
+    .map((o) => {
+      const sev = o.severity ? ` <em class="sev-${o.severity}">${o.severity}</em>` : '';
+      return `<li><span class="when">${escapeHtml(observationLabel(o) || 'Undated')}</span>${sev}${o.description ? ` — ${escapeHtml(short(o.description))}` : ''}</li>`;
+    })
+    .join('');
+  const more = h.length > 4 ? `<li class="muted">+${h.length - 4} more (open Edit to see all)</li>` : '';
+  return `<div class="history-title">Earlier observations</div><ul class="history-list">${rows}${more}</ul>`;
 }
 
 function photoStrip(pointId: string): string {
@@ -76,7 +118,8 @@ function upsertMarker(p: RiverPoint) {
 function matches(p: RiverPoint): boolean {
   if (!visibleCategories.has(p.category)) return false;
   if (!searchText) return true;
-  return `${p.name} ${p.description}`.toLowerCase().includes(searchText);
+  const past = (p.history ?? []).map((o) => o.description).join(' ');
+  return `${p.name} ${p.description} ${past}`.toLowerCase().includes(searchText);
 }
 
 export function renderPoints() {
@@ -106,7 +149,7 @@ function renderList() {
           return `<li data-id="${p.id}">
             <span class="dot" style="background:${c.color}">${c.icon}</span>
             <span class="li-text"><strong>${escapeHtml(p.name)}</strong>
-              <small>${c.label}${p.riverMile != null ? ` · mile ${p.riverMile}` : ''}</small></span>
+              <small>${c.label}${p.riverMile != null ? ` · mile ${p.riverMile}` : ''}${p.observedAt ? ` · ${fmtMonth(p.observedAt)}` : ''}</small></span>
           </li>`;
         })
         .join('')
@@ -158,18 +201,47 @@ function renderEditorPhotos() {
     .join('');
 }
 
-function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = []) {
-  editing = { point, isNew };
+function renderEditorHistory() {
+  if (!editing) return;
+  const h = editing.point.history ?? [];
+  $('editor-history').innerHTML = h.length
+    ? `<div class="history-title">Earlier observations (${h.length})</div><ul class="history-list">${h
+        .map(
+          (o, i) => `<li><span class="when">${escapeHtml(observationLabel(o, 'day') || 'Undated')}</span>${
+            o.severity ? ` <em class="sev-${o.severity}">${o.severity}</em>` : ''
+          }${o.description ? ` — ${escapeHtml(o.description)}` : ''}
+          <button type="button" class="link danger-link" data-remove-obs="${i}">Delete</button></li>`,
+        )
+        .join('')}</ul>`
+    : '';
+}
+
+function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = [], mode: 'edit' | 'observe' = 'edit') {
+  editing = { point, isNew, mode };
   pendingPhotos = photoIds;
   detachPhotos = [];
   renderEditorPhotos();
+  renderEditorHistory();
   map.closePopup();
-  $('editor-title').textContent = isNew ? 'New point' : 'Edit point';
+  const observing = mode === 'observe';
+  $('editor-title').textContent = observing ? `New observation · ${point.name}` : isNew ? 'New point' : 'Edit point';
+  $('obs-legend').textContent = observing
+    ? 'What you saw today (the previous observation moves to history)'
+    : point.observedAt
+      ? `Current observation (${fmtDay(point.observedAt)})`
+      : 'What you saw';
   field('name').value = point.name;
   field('category').value = point.category;
   field('severity').value = point.severity ?? '';
   field('riverMile').value = point.riverMile?.toString() ?? '';
   field('description').value = point.description;
+  // A new observation starts from today's date and blank conditions, with the
+  // last description and severity to adjust rather than retype.
+  field('observedAt').value = observing || isNew ? today() : (point.observedAt ?? '');
+  field('waterLevel').value = observing ? '' : (point.waterLevel ?? '');
+  field('gauge').value = observing ? '' : (point.gauge ?? '');
+  $('editor-save').textContent = observing ? 'Save observation' : 'Save';
+  $('editor-save-new').hidden = isNew || observing;
   $('mile-hint').textContent = '';
   $('editor-coords').textContent = `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
   $('editor-delete').hidden = isNew;
@@ -214,21 +286,31 @@ export function initPoints() {
     $('mile-hint').textContent = `From “${hit.route.name}” (${Math.round(hit.offKm * 1000)} m from the line)`;
   });
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  async function saveFromForm(asNewObservation: boolean) {
     if (!editing) return;
     const fd = new FormData(form);
     const category = fd.get('category') as Category;
     const mile = String(fd.get('riverMile') ?? '').trim();
-    const p: RiverPoint = {
+    const now = new Date().toISOString();
+    let observedAt = String(fd.get('observedAt') ?? '') || undefined;
+    // "Save as new observation" with the date untouched means "what I saw today".
+    if (asNewObservation && editing.mode === 'edit' && observedAt === editing.point.observedAt) observedAt = today();
+    const obs: PointObservation = {
+      observedAt,
+      description: String(fd.get('description') ?? '').trim(),
+      severity: SEVERITY_CATEGORIES.includes(category) ? (fd.get('severity') as Severity) || undefined : undefined,
+      waterLevel: (fd.get('waterLevel') as WaterLevel) || undefined,
+      gauge: String(fd.get('gauge') ?? '').trim() || undefined,
+      recordedAt: now,
+    };
+    const base: RiverPoint = {
       ...editing.point,
       name: String(fd.get('name')).trim(),
       category,
-      description: String(fd.get('description') ?? '').trim(),
       riverMile: mile === '' ? undefined : Number(mile),
-      severity: SEVERITY_CATEGORIES.includes(category) ? (fd.get('severity') as Severity) || undefined : undefined,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     };
+    const p = asNewObservation ? addObservation(base, obs) : editCurrent(base, obs);
     await put('points', p);
     const i = state.points.findIndex((x) => x.id === p.id);
     if (i >= 0) state.points[i] = p;
@@ -239,6 +321,20 @@ export function initPoints() {
     editing = null;
     dialog.close();
     renderPoints();
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void saveFromForm(editing?.mode === 'observe');
+  });
+  $('editor-save-new').addEventListener('click', () => {
+    if (form.reportValidity()) void saveFromForm(true);
+  });
+  $('editor-history').addEventListener('click', (e) => {
+    const idx = (e.target as HTMLElement).closest<HTMLElement>('[data-remove-obs]')?.dataset.removeObs;
+    if (idx == null || !editing || !confirm('Delete this earlier observation? (Takes effect when you save.)')) return;
+    editing.point = removeHistory(editing.point, Number(idx));
+    renderEditorHistory();
   });
 
   $('editor-cancel').addEventListener('click', () => {
@@ -297,9 +393,11 @@ export function initPoints() {
 
   // Edit button inside popups
   map.getContainer().addEventListener('click', (e) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-edit]')?.dataset.edit;
-    const p = id && state.points.find((x) => x.id === id);
-    if (p) openEditor({ ...p }, false);
+    const target = e.target as HTMLElement;
+    const editId = target.closest<HTMLElement>('[data-edit]')?.dataset.edit;
+    const obsId = target.closest<HTMLElement>('[data-observe]')?.dataset.observe;
+    const p = state.points.find((x) => x.id === (editId ?? obsId));
+    if (p) openEditor({ ...p }, false, [], obsId ? 'observe' : 'edit');
   });
 
   $('point-list').addEventListener('click', (e) => {

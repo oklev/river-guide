@@ -11,6 +11,7 @@ import {
   type Track,
   type TrackFix,
 } from './types';
+import { isWaterLevel, isYmd, sanitizeObservation } from './observations';
 
 export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[] = [], portages: Portage[] = []) {
   return {
@@ -87,6 +88,12 @@ export function fromGeoJSON(data: unknown): ParsedData {
         lng,
         riverMile: isNum(p.riverMile) ? p.riverMile : undefined,
         severity: ['low', 'medium', 'high'].includes(p.severity) ? (p.severity as Severity) : undefined,
+        observedAt: isYmd(p.observedAt) ? p.observedAt : undefined,
+        waterLevel: isWaterLevel(p.waterLevel) ? p.waterLevel : undefined,
+        gauge: typeof p.gauge === 'string' && p.gauge ? p.gauge.slice(0, 200) : undefined,
+        history: Array.isArray(p.history)
+          ? (p.history.map(sanitizeObservation).filter(Boolean) as NonNullable<ReturnType<typeof sanitizeObservation>>[])
+          : undefined,
       });
     } else if (f?.geometry?.type === 'LineString') {
       const raw: unknown[] = f.geometry.coordinates ?? [];

@@ -14,15 +14,44 @@ export type Severity = 'low' | 'medium' | 'high';
 /** [lat, lng] */
 export type LatLng = [number, number];
 
+export type WaterLevel = 'low' | 'normal' | 'high' | 'flood';
+
+export const WATER_LEVELS: Record<WaterLevel, string> = {
+  low: 'Low water',
+  normal: 'Normal water',
+  high: 'High water',
+  flood: 'Flood',
+};
+
+/** What a point looked like on one day. Conditions change with water level and season. */
+export interface PointObservation {
+  /** Local calendar date, YYYY-MM-DD. */
+  observedAt?: string;
+  description: string;
+  severity?: Severity;
+  waterLevel?: WaterLevel;
+  /** Free text, e.g. "450 cfs at Athens gauge". */
+  gauge?: string;
+  /** When this observation was last edited (ISO timestamp). */
+  recordedAt: string;
+}
+
 export interface RiverPoint {
   id: string;
   name: string;
   category: Category;
-  description: string;
   lat: number;
   lng: number;
   riverMile?: number;
+  // The current (most recently observed) observation lives on the point itself,
+  // so everything that reads points works unchanged; earlier ones are in history.
+  description: string;
   severity?: Severity;
+  observedAt?: string;
+  waterLevel?: WaterLevel;
+  gauge?: string;
+  /** Earlier observations, newest first. */
+  history?: PointObservation[];
   createdAt: string;
   updatedAt: string;
 }

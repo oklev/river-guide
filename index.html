@@ -110,14 +110,6 @@
           <h2 id="editor-title">New point</h2>
           <label>Name <input name="name" required maxlength="120" /></label>
           <label>Category <select name="category"></select></label>
-          <label id="severity-row">Severity
-            <select name="severity">
-              <option value="">—</option>
-              <option value="low">Low — caution</option>
-              <option value="medium">Medium — scout</option>
-              <option value="high">High — portage / avoid</option>
-            </select>
-          </label>
           <label>River mile
             <span class="input-row">
               <input name="riverMile" type="number" step="0.1" min="0" />
@@ -125,7 +117,32 @@
             </span>
             <small id="mile-hint"></small>
           </label>
-          <label>Description <textarea name="description" rows="4"></textarea></label>
+          <fieldset class="obs">
+            <legend id="obs-legend">What you saw</legend>
+            <div class="obs-row">
+              <label>Observed on <input name="observedAt" type="date" /></label>
+              <label>Water level
+                <select name="waterLevel">
+                  <option value="">—</option>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="flood">Flood</option>
+                </select>
+              </label>
+            </div>
+            <label>Gauge reading <input name="gauge" maxlength="120" placeholder="e.g. 450 cfs at Athens gauge" /></label>
+            <label id="severity-row">Severity
+              <select name="severity">
+                <option value="">—</option>
+                <option value="low">Low — caution</option>
+                <option value="medium">Medium — scout</option>
+                <option value="high">High — portage / avoid</option>
+              </select>
+            </label>
+            <label>Description <textarea name="description" rows="4"></textarea></label>
+          </fieldset>
+          <div id="editor-history" class="history"></div>
           <div class="editor-photos-row">
             <div id="editor-photos" class="editor-photos"></div>
             <label class="btn small">+ Photo
@@ -137,7 +154,8 @@
             <button type="button" id="editor-delete" class="btn danger">Delete</button>
             <span class="spacer"></span>
             <button type="button" id="editor-cancel" class="btn">Cancel</button>
-            <button type="submit" class="btn primary">Save</button>
+            <button type="button" id="editor-save-new" class="btn" title="Keep the current observation in this point's history and save these details as a new one">Save as new observation</button>
+            <button type="submit" id="editor-save" class="btn primary">Save</button>
           </div>
         </form>
       </dialog>
