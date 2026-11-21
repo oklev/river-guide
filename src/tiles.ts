@@ -125,6 +125,12 @@ export async function downloadTiles(
   return progress;
 }
 
+export async function deleteTiles(urls: string[]): Promise<void> {
+  if (!hasCaches || !urls.length) return;
+  const cache = await tileCache();
+  await Promise.all(urls.map((u) => cache.delete(u)));
+}
+
 export async function cachedTileCount(): Promise<number> {
   if (!hasCaches) return 0;
   return (await (await tileCache()).keys()).length;

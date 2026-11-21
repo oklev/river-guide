@@ -25,7 +25,17 @@ export interface RiverPoint {
   updatedAt: string;
 }
 
+/** One downloaded corridor, remembered so its data can be deleted later. */
+export interface OfflineArea {
+  coords: LatLng[];
+  bufferKm: number;
+  maxZoom: number;
+  osm: boolean;
+}
+
 export interface OfflineInfo {
+  /** Every area downloaded for this route (a route may be re-downloaded with other settings). */
+  areas?: OfflineArea[];
   bufferKm: number;
   maxZoom: number;
   tiles: number;
@@ -36,6 +46,8 @@ export interface OfflineInfo {
   downloadedAt: string;
   /** Route line was edited after the download, so the saved area may not cover it. */
   stale?: boolean;
+  /** The last download was cancelled part-way. */
+  partial?: boolean;
 }
 
 export interface Route {

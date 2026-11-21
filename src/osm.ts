@@ -1,6 +1,6 @@
 import { VectorTile, classifyRings } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
-import { clearStore, count, getAll, hasKey, put } from './store';
+import { clearStore, count, del, getAll, hasKey, put } from './store';
 import type { DownloadProgress, TileCoord } from './tiles';
 import type { Category, LatLng, OsmFeature } from './types';
 
@@ -213,4 +213,5 @@ export async function downloadOsm(
 
 export const loadAllOsm = () => getAll('osm');
 export const clearOsm = () => clearStore('osm');
+export const deleteOsmTiles = (keys: string[]) => Promise.all(keys.map((k) => del('osm', k)));
 export const osmTileCount = () => count('osm');

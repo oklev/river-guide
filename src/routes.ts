@@ -13,11 +13,12 @@ import {
   clearTiles,
   corridorTileCoords,
   corridorTiles,
+  deleteTiles,
   downloadTiles,
 } from './tiles';
-import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, downloadOsm, loadAllOsm, osmTileCount } from './osm';
+import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount } from './osm';
 import { renderOsm } from './osmLayer';
-import { CATEGORIES, ROUTE_COLORS, type Route } from './types';
+import { CATEGORIES, ROUTE_COLORS, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
 
 /** Above this, the download button is disabled; keeps a stray 50 km buffer from pulling gigabytes. */
@@ -32,6 +33,7 @@ const findRoute = (id: string) => state.routes.find((r) => r.id === id);
 // ---------- rendering ----------
 function offlineLabel(r: Route): string {
   if (!r.offline) return 'Not saved for offline';
+  if (r.offline.partial) return 'Offline download incomplete';
   if (r.offline.stale) return 'Offline map outdated (line changed)';
   return `Offline ✓ ${new Date(r.offline.downloadedAt).toLocaleDateString()}`;
 }
@@ -71,10 +73,10 @@ function upsertLine(r: Route) {
   let line = lines.get(r.id);
   if (!line) {
     line = L.polyline([], { weight: 5, opacity: 0.85 });
-    line.bindPopup(() => {
-      const cur = findRoute(r.id);
-      return cur ? popupHtml(cur) : '';
-    }, { maxWidth: 320 });
+    // Taps on a line while drawing or placing a point belong to the map, not this popup.
+    line.on('click', (e: L.LeafletMouseEvent) => {
+      if (getMode() === 'idle') openRoutePopup(r.id, e.latlng);
+    });
     lines.set(r.id, line);
   }
   line.setLatLngs(r.coords).setStyle({ color: r.color }).addTo(map);
@@ -102,11 +104,16 @@ export function renderRoutes() {
     : `<li class="empty">No routes yet. Use “+ New route” and tap along the river to trace one.</li>`;
 }
 
+function openRoutePopup(id: string, at: L.LatLng) {
+  const r = findRoute(id);
+  if (r) L.popup({ maxWidth: 320 }).setLatLng(at).setContent(popupHtml(r)).openOn(map);
+}
+
 function focusRoute(r: Route) {
   const line = lines.get(r.id);
   if (!line) return;
   map.fitBounds(line.getBounds(), { padding: [40, 40] });
-  line.openPopup(line.getCenter());
+  openRoutePopup(r.id, line.getCenter());
 }
 
 async function saveRoute(r: Route) {
@@ -152,6 +159,42 @@ function editLine(r: Route) {
     }
     renderRoutes();
   });
+}
+
+// ---------- offline data bookkeeping ----------
+/** Default corridor for new downloads: the river itself (±0.5 km). */
+const DEFAULT_BUFFER_KM = 0.5;
+
+function offlineAreas(r: Route): OfflineArea[] {
+  const o = r.offline;
+  if (!o) return [];
+  // Downloads made before areas were tracked: best guess from the current line.
+  return o.areas ?? [{ coords: r.coords, bufferKm: o.bufferKm, maxZoom: o.maxZoom, osm: o.osmTiles != null }];
+}
+
+function areaData(areas: OfflineArea[]) {
+  const urls = new Set<string>();
+  const osm = new Set<string>();
+  for (const a of areas) {
+    for (const u of corridorTiles(a.coords, a.bufferKm, OFFLINE_MIN_ZOOM, a.maxZoom)) urls.add(u);
+    if (a.osm) for (const t of corridorTileCoords(a.coords, a.bufferKm, OSM_ZOOM, OSM_ZOOM)) osm.add(`${t.z}/${t.x}/${t.y}`);
+  }
+  return { urls, osm };
+}
+
+/** Delete a route's offline map and trail data, keeping anything another saved route still uses. */
+async function removeOfflineData(r: Route) {
+  if (!r.offline) return;
+  const mine = areaData(offlineAreas(r));
+  const keep = areaData(state.routes.filter((x) => x.id !== r.id).flatMap(offlineAreas));
+  await Promise.all([
+    deleteTiles([...mine.urls].filter((u) => !keep.urls.has(u))),
+    deleteOsmTiles([...mine.osm].filter((k) => !keep.osm.has(k))),
+  ]);
+  delete r.offline;
+  await saveRoute(r);
+  renderOsm(await loadAllOsm());
+  void refreshStorageInfo();
 }
 
 // ---------- details dialog ----------
@@ -209,7 +252,8 @@ function openOffline(r: Route) {
   offlineRoute = r;
   map.closePopup();
   $('offline-title').textContent = `Save “${r.name}” for offline`;
-  bufferSelect.value = String(r.offline?.bufferKm ?? 2);
+  bufferSelect.value = String(r.offline?.bufferKm ?? DEFAULT_BUFFER_KM);
+  $('offline-delete').hidden = !r.offline;
   zoomSelect.value = String(r.offline?.maxZoom ?? USGS_MAX_ZOOM);
   progressBar.hidden = true;
   $('offline-status').textContent = r.offline ? `Last saved: ${offlineLabel(r)}` : '';
@@ -230,6 +274,7 @@ async function runDownload() {
   const controller = (abort = new AbortController());
   const status = (msg: string) => ($('offline-status').textContent = msg);
   startBtn.textContent = 'Cancel download';
+  $('offline-delete').hidden = true;
   bufferSelect.disabled = zoomSelect.disabled = osmCheckbox.disabled = true;
   progressBar.hidden = false;
   progressBar.max = urls.length + osmTiles.length;
@@ -261,13 +306,26 @@ async function runDownload() {
       }
       renderOsm(await loadAllOsm());
     }
+    const area: OfflineArea = {
+      coords: r.coords,
+      bufferKm: Number(bufferSelect.value),
+      maxZoom: Number(zoomSelect.value),
+      osm: osmTiles.length > 0,
+    };
+    const sameArea = (a: OfflineArea) => JSON.stringify(a) === JSON.stringify(area);
     if (controller.signal.aborted) {
+      // Track the partial area so "Delete offline data" can still clean it up.
+      r.offline = r.offline
+        ? { ...r.offline, areas: [...offlineAreas(r).filter((a) => !sameArea(a)), area] }
+        : { areas: [area], bufferKm: area.bufferKm, maxZoom: area.maxZoom, tiles: 0, failed: 0, partial: true, downloadedAt: new Date().toISOString() };
+      await saveRoute(r);
       status('Download cancelled. Everything saved so far is kept.');
       return;
     }
     r.offline = {
-      bufferKm: Number(bufferSelect.value),
-      maxZoom: Number(zoomSelect.value),
+      areas: [...offlineAreas(r).filter((a) => !sameArea(a)), area],
+      bufferKm: area.bufferKm,
+      maxZoom: area.maxZoom,
       tiles: tiles.total,
       failed: tiles.failed,
       osmTiles: osm?.total,
@@ -291,6 +349,7 @@ async function runDownload() {
     abort = null;
     startBtn.textContent = 'Download';
     bufferSelect.disabled = zoomSelect.disabled = osmCheckbox.disabled = false;
+    $('offline-delete').hidden = !r.offline;
     void refreshStorageInfo();
   }
 }
@@ -350,7 +409,9 @@ export function initRoutes() {
   });
   $('route-delete').addEventListener('click', async () => {
     const r = detailsRoute;
-    if (!r || !confirm(`Delete route “${r.name}”? Points along it are kept.`)) return;
+    const extra = r?.offline ? ' Its offline map data will be deleted too.' : '';
+    if (!r || !confirm(`Delete route “${r.name}”? Points along it are kept.${extra}`)) return;
+    await removeOfflineData(r);
     await del('routes', r.id);
     state.routes = state.routes.filter((x) => x.id !== r.id);
     detailsRoute = null;
@@ -362,6 +423,14 @@ export function initRoutes() {
   osmCheckbox.addEventListener('change', updateEstimate);
   zoomSelect.addEventListener('change', updateEstimate);
   startBtn.addEventListener('click', runDownload);
+  $('offline-delete').addEventListener('click', async () => {
+    const r = offlineRoute;
+    if (!r?.offline || abort) return;
+    if (!confirm(`Delete offline map data for “${r.name}”? The route itself is kept.`)) return;
+    await removeOfflineData(r);
+    $('offline-delete').hidden = true;
+    $('offline-status').textContent = 'Offline data deleted.';
+  });
   $('offline-close').addEventListener('click', () => offlineDialog.close());
   offlineDialog.addEventListener('close', () => abort?.abort());
 

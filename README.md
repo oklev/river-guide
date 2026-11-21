@@ -18,7 +18,8 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 **Offline**
 - The app is an installable PWA, and a service worker caches the app shell.
 - Points and routes live in IndexedDB, so they're always available offline.
-- **Offline…** on a route downloads USGS topo map tiles along it. You choose the corridor width (±0.5 km to ±10 km) and the level of detail (zoom 14–16).
+- **Offline…** on a route downloads USGS topo map tiles along it. You choose the corridor width (±0.5 km river corridor by default, up to ±10 km) and the level of detail (zoom 14–16).
+- **Delete offline data** in the same dialog frees a route's storage. Tiles shared with other saved routes are kept. Deleting a route also deletes its offline data.
 - The map reopens at your last view, so after an offline reload it shows your saved area.
 
 **Trails, parks & campsites overlay**
