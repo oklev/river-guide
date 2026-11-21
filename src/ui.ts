@@ -6,6 +6,12 @@ export function escapeHtml(s: string): string {
 
 export const fmtMi = (mi: number) => `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
 
+/** Short walking distances read better in feet; longer ones in miles. */
+export function fmtWalk(km: number): string {
+  const ft = km * 3280.84;
+  return ft < 1000 ? `${Math.round(ft / 10) * 10} ft` : `${(km / 1.609344).toFixed(2)} mi`;
+}
+
 export function fmtBytes(bytes: number): string {
   if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
   if (bytes < 1e9) return `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;

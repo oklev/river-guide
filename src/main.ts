@@ -6,6 +6,7 @@ import { state } from './state';
 import { getAll } from './store';
 import { toGeoJSON } from './geojson';
 import { importFile, initShare } from './share';
+import { initPortages, renderPortages } from './portages';
 import { initPoints, renderPoints } from './points';
 import { initRoutes, refreshStorageInfo, renderRoutes } from './routes';
 import { initOsmLayer, renderOsm } from './osmLayer';
@@ -21,6 +22,7 @@ initRoutes();
 initTracks();
 initPhotos();
 initShare();
+initPortages();
 
 // ---------- sidebar ----------
 $('toggle-sidebar').addEventListener('click', () => {
@@ -46,7 +48,7 @@ showTab(savedTab === 'routes' || savedTab === 'tracks' ? savedTab : 'points');
 
 // ---------- import / export ----------
 $('export').addEventListener('click', () => {
-  const data = toGeoJSON(state.points, state.routes, state.tracks);
+  const data = toGeoJSON(state.points, state.routes, state.tracks, state.portages);
   const name = `river-guide-${new Date().toISOString().slice(0, 10)}.geojson`;
   void saveFile(name, JSON.stringify(data, null, 2), 'application/geo+json');
 });
@@ -79,17 +81,19 @@ window.addEventListener('offline', syncOnline);
 syncOnline();
 
 // ---------- boot ----------
-const [points, routes, tracks, photos, osmTiles] = await Promise.all([
+const [points, routes, tracks, photos, portages, osmTiles] = await Promise.all([
   getAll('points'),
   getAll('routes'),
   getAll('tracks'),
   getAll('photos'),
+  getAll('portages'),
   loadAllOsm(),
 ]);
-Object.assign(state, { points, routes, tracks, photos });
+Object.assign(state, { points, routes, tracks, photos, portages });
 await finishInterruptedTracks();
 renderOsm(osmTiles);
 renderRoutes();
+renderPortages();
 renderTracks();
 renderPhotos();
 renderPoints();

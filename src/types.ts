@@ -149,3 +149,23 @@ export interface PhotoBlob {
   /** Resized JPEG (long edge ≤ 1600 px). */
   blob: Blob;
 }
+
+/** Walking paths that belong with a river route. */
+export type PathKind = 'portage' | 'access';
+
+export interface Portage {
+  id: string;
+  name: string;
+  kind: PathKind;
+  description: string;
+  coords: LatLng[];
+  /** The river route this belongs to (shared and listed with it). */
+  routeId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const PATH_KINDS: Record<PathKind, { label: string; icon: string; color: string; hint: string }> = {
+  portage: { label: 'Portage', icon: '🛶', color: '#d32f2f', hint: 'Carry around a hazard, dam or rapid' },
+  access: { label: 'Access trail', icon: '🥾', color: '#5d4037', hint: 'Walk between parking and the water' },
+};

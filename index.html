@@ -40,10 +40,15 @@
 
         <section id="tab-routes" class="tab-pane" role="tabpanel" hidden>
           <div class="sidebar-section">
-            <button id="new-route" class="btn primary">+ New route</button>
+            <div class="footer-row">
+              <button id="new-route" class="btn primary">+ New route</button>
+              <button id="new-portage" class="btn">+ Portage / trail</button>
+            </div>
             <p class="muted small">Trace a run by tapping along the river from put-in to take-out. Then save it for offline use from its popup.</p>
           </div>
-          <ul id="route-list" class="item-list"></ul>
+          <ul id="route-list" class="item-list grow-0"></ul>
+          <h3 id="portage-heading" class="list-heading" hidden>Portages &amp; access trails</h3>
+          <ul id="portage-list" class="item-list"></ul>
         </section>
 
         <section id="tab-tracks" class="tab-pane" role="tabpanel" hidden>
@@ -186,6 +191,29 @@
             <button type="button" id="offline-start" class="btn primary">Download</button>
           </div>
         </div>
+      </dialog>
+
+      <dialog id="portage-dialog" class="editor">
+        <form id="portage-form" method="dialog">
+          <h2 id="portage-title">New path</h2>
+          <label>Type
+            <select name="kind">
+              <option value="portage">🛶 Portage</option>
+              <option value="access">🥾 Access trail</option>
+            </select>
+            <small id="portage-kind-hint"></small>
+          </label>
+          <label>Name <input name="name" maxlength="120" placeholder="e.g. Around Mill Dam, river left" /></label>
+          <label>Route <select name="routeId"></select></label>
+          <label>Description <textarea name="description" rows="3" placeholder="Terrain, where to take out and put back in…"></textarea></label>
+          <div class="coords" id="portage-length"></div>
+          <div class="editor-actions">
+            <button type="button" id="portage-delete" class="btn danger">Delete</button>
+            <span class="spacer"></span>
+            <button type="button" id="portage-cancel" class="btn">Cancel</button>
+            <button type="submit" class="btn primary">Save</button>
+          </div>
+        </form>
       </dialog>
 
       <dialog id="share-dialog" class="editor">

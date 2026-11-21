@@ -3,6 +3,8 @@ import {
   ROUTE_COLORS,
   type Category,
   type LatLng,
+  type PathKind,
+  type Portage,
   type RiverPoint,
   type Route,
   type Severity,
@@ -10,7 +12,7 @@ import {
   type TrackFix,
 } from './types';
 
-export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[] = []) {
+export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[] = [], portages: Portage[] = []) {
   return {
     type: 'FeatureCollection',
     features: [
@@ -36,6 +38,11 @@ export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[]
           accuracies: fixes.map(([, , , acc]) => acc),
         },
       })),
+      ...portages.map(({ coords, ...props }) => ({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords.map(([lat, lng]) => [lng, lat]) },
+        properties: { featureType: 'portage', ...props },
+      })),
     ],
   };
 }
@@ -46,6 +53,7 @@ export interface ParsedData {
   points: RiverPoint[];
   routes: Route[];
   tracks: Track[];
+  portages: Portage[];
 }
 
 /**
@@ -58,7 +66,7 @@ export function fromGeoJSON(data: unknown): ParsedData {
     throw new Error('Not a GeoJSON FeatureCollection');
   }
   const now = new Date().toISOString();
-  const out: ParsedData = { points: [], routes: [], tracks: [] };
+  const out: ParsedData = { points: [], routes: [], tracks: [], portages: [] };
   for (const f of fc.features as any[]) {
     const p = f?.properties ?? {};
     const base = {
@@ -95,6 +103,14 @@ export function fromGeoJSON(data: unknown): ParsedData {
           return [c[1], c[0], Number.isFinite(t) ? t : 0, isNum(acc) ? acc : -1];
         });
         out.tracks.push({ ...base, fixes, source: p.source === 'gpx' ? 'gpx' : 'recorded' });
+      } else if (p.featureType === 'portage') {
+        out.portages.push({
+          ...base,
+          kind: (['portage', 'access'] as PathKind[]).includes(p.kind) ? p.kind : 'portage',
+          description: String(p.description ?? ''),
+          coords: valid.map(({ c }) => [c[1], c[0]] as LatLng),
+          routeId: typeof p.routeId === 'string' ? p.routeId : undefined,
+        });
       } else {
         const coords: LatLng[] = valid.map(({ c }) => [c[1], c[0]]);
         out.routes.push({

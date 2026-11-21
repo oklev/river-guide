@@ -10,7 +10,8 @@ import { renderPoints } from './points';
 import { renderRoutes } from './routes';
 import { renderTracks } from './tracks';
 import { renderPhotos } from './photos';
-import type { Photo, RiverPoint, Route, Track } from './types';
+import { renderPortages } from './portages';
+import type { Photo, Portage, RiverPoint, Route, Track } from './types';
 import { $, fmtBytes } from './ui';
 
 /**
@@ -56,6 +57,7 @@ interface Selection {
   points: RiverPoint[];
   photos: Photo[];
   tracks: Track[];
+  portages: Portage[];
 }
 
 function select(r: Route, km: number, withPhotos: boolean, withTracks: boolean): Selection {
@@ -66,12 +68,16 @@ function select(r: Route, km: number, withPhotos: boolean, withTracks: boolean):
     points,
     photos: withPhotos ? state.photos.filter((ph) => ph.pointId && ids.has(ph.pointId)) : [],
     tracks: withTracks ? state.tracks.filter((t) => !t.recording && trackAlong(r, t, km)) : [],
+    // Paths attached to the route, plus unattached ones that touch the corridor.
+    portages: state.portages.filter(
+      (p) => p.routeId === r.id || (!p.routeId && p.coords.some(([lat, lng]) => nearRoute(r, lat, lng, km))),
+    ),
   };
 }
 
 // ---------- export ----------
 async function buildPackage(sel: Selection): Promise<Blob> {
-  const geo = toGeoJSON(sel.points, [sel.route], sel.tracks);
+  const geo = toGeoJSON(sel.points, [sel.route], sel.tracks, sel.portages);
   const meta: PackageMeta = {
     version: PACKAGE_VERSION,
     exportedAt: new Date().toISOString(),
@@ -136,6 +142,7 @@ async function importParsed(data: ParsedData, photoFiles: Map<string, Uint8Array
   for (const r of mergeNewer(state.routes, data.routes, res, (local, inc) => ({ ...inc, offline: local.offline }))) await put('routes', r);
   for (const p of mergeNewer(state.points, data.points, res)) await put('points', p);
   for (const t of mergeNewer(state.tracks, data.tracks, res)) await put('tracks', t);
+  for (const p of mergeNewer(state.portages, data.portages, res)) await put('portages', p);
 
   let photoCount = 0;
   for (const m of meta?.photos ?? []) {
@@ -154,6 +161,7 @@ async function importParsed(data: ParsedData, photoFiles: Map<string, Uint8Array
   if (data.routes.length) res.summary.push(plural(data.routes.length, 'route'));
   if (data.points.length) res.summary.push(plural(data.points.length, 'point'));
   if (photoCount) res.summary.push(plural(photoCount, 'new photo'));
+  if (data.portages.length) res.summary.push(plural(data.portages.length, 'portage/trail'));
   if (data.tracks.length) res.summary.push(plural(data.tracks.length, 'track'));
   res.bounds = [
     ...data.routes.flatMap((r) => r.coords.map((c) => L.latLng(c))),
@@ -183,6 +191,7 @@ export async function importFile(file: File) {
   renderPoints();
   renderTracks();
   renderPhotos();
+  renderPortages();
   if (result.bounds.length) map.fitBounds(L.latLngBounds(result.bounds), { padding: [40, 40], maxZoom: 15 });
   const changes = [result.added && `${result.added} new`, result.updated && `${result.updated} updated`, result.skipped && `${result.skipped} unchanged (yours is newer or the same)`]
     .filter(Boolean)
@@ -202,6 +211,7 @@ function updateSummary() {
   const sel = select(shareRoute, corridor(), withPhotos(), withTracks());
   const parts = [
     `${sel.points.length} point${sel.points.length === 1 ? '' : 's'}`,
+    sel.portages.length > 0 && `${sel.portages.length} portage/trail${sel.portages.length === 1 ? '' : 's'}`,
     withPhotos() && `${sel.photos.length} photo${sel.photos.length === 1 ? '' : 's'}`,
     withTracks() && `${sel.tracks.length} track${sel.tracks.length === 1 ? '' : 's'}`,
   ].filter(Boolean);

@@ -2,7 +2,7 @@ import L from 'leaflet';
 import { map } from './map';
 import { offlineAreas, state } from './state';
 import { del, put } from './store';
-import { KM_PER_MI, lengthMi, locateOnLine } from './geo';
+import { KM_PER_MI, lengthKm, lengthMi, locateOnLine } from './geo';
 import { RouteEditor } from './routeEditor';
 import { cancelAddPoint, closeSidebarOnMobile } from './points';
 import {
@@ -19,8 +19,9 @@ import {
 import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAllOsm, osmTileCount, outdatedOsmCount } from './osm';
 import { renderOsm, rerenderOsm } from './osmLayer';
 import { openShare } from './share';
-import { CATEGORIES, ROUTE_COLORS, type LatLng, type OfflineArea, type Route } from './types';
-import { $, escapeHtml, fmtBytes, fmtMi, getMode } from './ui';
+import { detachFromRoute, portageMile, portagesOf } from './portages';
+import { CATEGORIES, PATH_KINDS, ROUTE_COLORS, type LatLng, type OfflineArea, type Route } from './types';
+import { $, escapeHtml, fmtBytes, fmtMi, fmtWalk, getMode } from './ui';
 
 /** Above this, the download button is disabled; keeps a stray 50 km buffer from pulling gigabytes. */
 const MAX_TILES = 20_000;
@@ -28,7 +29,7 @@ const MAX_TILES = 20_000;
 const ALONG_KM = 0.5;
 
 const lines = new Map<string, L.Polyline>();
-const editor = new RouteEditor(map);
+export const editor = new RouteEditor(map);
 const findRoute = (id: string) => state.routes.find((r) => r.id === id);
 
 // ---------- rendering ----------
@@ -40,20 +41,24 @@ function offlineLabel(r: Route): string {
 }
 
 function popupHtml(r: Route): string {
-  const along = state.points
+  const pointRows = state.points
     .map((p) => ({ p, loc: locateOnLine(r.coords, [p.lat, p.lng]) }))
     .filter((x) => x.loc && x.loc.offKm <= ALONG_KM)
-    .sort((a, b) => a.loc!.alongKm - b.loc!.alongKm)
-    .slice(0, 15);
+    .map(({ p, loc }) => {
+      const c = CATEGORIES[p.category];
+      const sev = p.severity ? ` <em class="sev-${p.severity}">${p.severity}</em>` : '';
+      return { mi: loc!.alongKm / KM_PER_MI, html: `<span style="color:${c.color}">${c.icon}</span> ${escapeHtml(p.name)}${sev}` };
+    });
+  const pathRows = portagesOf(r.id).map((p) => {
+    const k = PATH_KINDS[p.kind];
+    return {
+      mi: portageMile(p, r) ?? 0,
+      html: `<span style="color:${k.color}">${k.icon}</span> ${escapeHtml(p.name)} <small>· ${fmtWalk(lengthKm(p.coords))}</small>`,
+    };
+  });
+  const along = [...pointRows, ...pathRows].sort((a, b) => a.mi - b.mi).slice(0, 20);
   const alongHtml = along.length
-    ? `<ul class="along">${along
-        .map(({ p, loc }) => {
-          const c = CATEGORIES[p.category];
-          const sev = p.severity ? ` <em class="sev-${p.severity}">${p.severity}</em>` : '';
-          return `<li><span class="mi">${(loc!.alongKm / KM_PER_MI).toFixed(1)}</span>
-            <span style="color:${c.color}">${c.icon}</span> ${escapeHtml(p.name)}${sev}</li>`;
-        })
-        .join('')}</ul>`
+    ? `<ul class="along">${along.map((x) => `<li><span class="mi">${x.mi.toFixed(1)}</span> ${x.html}</li>`).join('')}</ul>`
     : '';
   return `
     <div class="popup">
@@ -429,6 +434,7 @@ export function initRoutes() {
     if (!r || !confirm(`Delete route “${r.name}”? Points along it are kept.${extra}`)) return;
     await removeOfflineData(r);
     await del('routes', r.id);
+    await detachFromRoute(r.id);
     state.routes = state.routes.filter((x) => x.id !== r.id);
     detailsRoute = null;
     detailsDialog.close();

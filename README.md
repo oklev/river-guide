@@ -14,6 +14,7 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - Trace a run by tapping along the river from put-in (mile 0) to take-out.
 - Edit the line afterwards: drag vertices, tap a vertex to remove it, drag a midpoint handle to add a bend. ⇄ swaps put-in and take-out.
 - Each route's popup lists the points within 0.5 km of the line, in river-mile order (a quick trip sheet).
+- **Portages and access trails** are dotted walking paths drawn the same way as routes, in feet: red for carrying around a hazard or dam, brown for walking between parking and the water. Each one attaches to the nearest route (changeable), appears in that route's popup at its river mile, and is included when the route is shared. Deleting a route keeps its paths but detaches them.
 
 **Offline**
 - The app is an installable PWA, and a service worker caches the app shell.

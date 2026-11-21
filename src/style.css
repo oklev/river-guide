@@ -288,3 +288,11 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .viewer img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
 .viewer-bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; color: #ddd; }
 .btn.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* ---------- portages & access trails ---------- */
+.swatch.dotted { height: 6px; background: radial-gradient(circle, var(--c) 2.5px, transparent 3px) 0 50% / 8px 6px repeat-x; }
+.list-heading { margin: 0; padding: 10px 12px 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+.list-heading[hidden] { display: none; }
+.item-list.grow-0 { flex: none; overflow: visible; }
+#tab-routes { overflow-y: auto; }
+.along small { color: #61727a; }

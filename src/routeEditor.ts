@@ -1,9 +1,17 @@
 import L from 'leaflet';
-import { lengthMi } from './geo';
+import { lengthKm } from './geo';
 import type { LatLng } from './types';
 import { $, fmtMi, setMode } from './ui';
 
 type DoneCallback = (coords: LatLng[] | null) => void;
+
+export interface EditorOptions {
+  /** Shown until the line has two points. */
+  hint?: string;
+  /** Formats the line's length (km) for the toolbar. */
+  format?: (km: number) => string;
+  dashArray?: string;
+}
 
 const vertexIcon = (color: string, first: boolean) =>
   L.divIcon({
@@ -22,6 +30,7 @@ export class RouteEditor {
   private coords: L.LatLng[] = [];
   private color = '#1565c0';
   private onDone: DoneCallback | null = null;
+  private opts: EditorOptions = {};
   private readonly line = L.polyline([], { weight: 4, dashArray: '8 6', interactive: false });
   private readonly handles = L.layerGroup();
 
@@ -35,12 +44,13 @@ export class RouteEditor {
     return this.onDone !== null;
   }
 
-  start(initial: LatLng[], color: string, onDone: DoneCallback) {
+  start(initial: LatLng[], color: string, onDone: DoneCallback, opts: EditorOptions = {}) {
     if (this.active) this.end(null);
+    this.opts = opts;
     this.coords = initial.map(([lat, lng]) => L.latLng(lat, lng));
     this.color = color;
     this.onDone = onDone;
-    this.line.setStyle({ color }).addTo(this.map);
+    this.line.setStyle({ color, dashArray: opts.dashArray ?? '8 6' }).addTo(this.map);
     this.handles.addTo(this.map);
     this.map.on('click', this.onMapClick);
     this.map.closePopup();
@@ -110,7 +120,8 @@ export class RouteEditor {
       this.handles.addLayer(m);
     }
     const n = this.coords.length;
-    const len = lengthMi(this.coords.map((c) => [c.lat, c.lng]));
-    $('route-status').textContent = n < 2 ? 'Tap the map at the put-in, then along the river' : `${n} points · ${fmtMi(len)}`;
+    const km = lengthKm(this.coords.map((c) => [c.lat, c.lng]));
+    const fmt = this.opts.format ?? ((k: number) => fmtMi(k / 1.609344));
+    $('route-status').textContent = n < 2 ? (this.opts.hint ?? 'Tap the map at the put-in, then along the river') : `${n} points · ${fmt(km)}`;
   }
 }
