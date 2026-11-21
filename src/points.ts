@@ -23,6 +23,7 @@ import {
 } from './observations';
 import { $, escapeHtml, getMode, setMode } from './ui';
 import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
+import { dailyMean, fmtValue, freshGauge, levelFor, nearestGauge, readingSummary, routeGauge, LEVEL_LABELS } from './gauges';
 
 const markers = new Map<string, L.Marker>();
 const visibleCategories = new Set<Category>(Object.keys(CATEGORIES) as Category[]);
@@ -216,6 +217,61 @@ function renderEditorHistory() {
     : '';
 }
 
+/**
+ * The gauge for a point: its route's gauge (or the route's nearest), else the
+ * nearest gauge to the point itself.
+ */
+function gaugeForPoint(p: RiverPoint) {
+  const hit = nearestRoute(state.routes, [p.lat, p.lng]);
+  const route = hit && hit.offKm <= 2 ? hit.route : undefined;
+  const rg = route ? routeGauge(route) : null;
+  return { route, gauge: rg?.gauge ?? nearestGauge(p.lat, p.lng) };
+}
+
+/** Fill "Gauge reading" (and water level, if the route has ranges) for the observation date. */
+async function fillFromGauge(opts: { quiet?: boolean } = {}) {
+  if (!editing) return;
+  const p = editing.point;
+  const hint = $('gauge-hint');
+  const found = gaugeForPoint(p);
+  if (!found.gauge) {
+    if (!opts.quiet) hint.textContent = navigator.onLine ? 'No USGS gauge found near this point.' : 'No saved gauge data near this point (go online).';
+    return;
+  }
+  const date = field('observedAt').value;
+  const isToday = !date || date === today();
+  const route = found.route;
+  const levelParam = route?.levels?.param;
+  let text: string;
+  let levelValue: number | undefined;
+  if (isToday) {
+    const g = (await freshGauge(found.gauge.id)) ?? found.gauge;
+    const time = g.latest['00060']?.time ?? g.latest['00065']?.time;
+    // Quiet pre-fill only uses readings from the last 3 hours.
+    if (opts.quiet && (!time || Date.now() - Date.parse(time) > 3 * 3_600_000)) return;
+    text = readingSummary(g);
+    levelValue = levelParam ? g.latest[levelParam]?.value : undefined;
+  } else {
+    if (!navigator.onLine) {
+      if (!opts.quiet) hint.textContent = 'Past readings need a connection.';
+      return;
+    }
+    hint.textContent = 'Looking up that day…';
+    const param = levelParam ?? (found.gauge.latest['00060'] ? '00060' : '00065');
+    const mean = await dailyMean(found.gauge.id, param, date).catch(() => null);
+    if (mean == null) {
+      hint.textContent = 'No reading for that day.';
+      return;
+    }
+    text = `${fmtValue(param, mean)} daily mean at ${found.gauge.name}`;
+    levelValue = levelParam === param ? mean : undefined;
+  }
+  field('gauge').value = text;
+  const level = levelFor(route?.levels, levelValue);
+  if (level) field('waterLevel').value = level;
+  hint.textContent = `Filled from USGS${level ? ` · water level from “${route!.name}” ranges (${LEVEL_LABELS[level].label})` : ''}${opts.quiet ? ' · clear it if not wanted' : ''}`;
+}
+
 function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = [], mode: 'edit' | 'observe' = 'edit') {
   editing = { point, isNew, mode };
   pendingPhotos = photoIds;
@@ -240,6 +296,9 @@ function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = [], 
   field('observedAt').value = observing || isNew ? today() : (point.observedAt ?? '');
   field('waterLevel').value = observing ? '' : (point.waterLevel ?? '');
   field('gauge').value = observing ? '' : (point.gauge ?? '');
+  $('gauge-hint').textContent = '';
+  // Recording conditions today: pre-fill from a recent gauge reading.
+  if ((observing || isNew) && !field('gauge').value) void fillFromGauge({ quiet: true });
   $('editor-save').textContent = observing ? 'Save observation' : 'Save';
   $('editor-save-new').hidden = isNew || observing;
   $('mile-hint').textContent = '';
@@ -327,6 +386,7 @@ export function initPoints() {
     e.preventDefault();
     void saveFromForm(editing?.mode === 'observe');
   });
+  $('gauge-fill').addEventListener('click', () => void fillFromGauge());
   $('editor-save-new').addEventListener('click', () => {
     if (form.reportValidity()) void saveFromForm(true);
   });

@@ -131,7 +131,13 @@
                 </select>
               </label>
             </div>
-            <label>Gauge reading <input name="gauge" maxlength="120" placeholder="e.g. 450 cfs at Athens gauge" /></label>
+            <label>Gauge reading
+              <span class="input-row">
+                <input name="gauge" maxlength="160" placeholder="e.g. 450 cfs at Athens gauge" />
+                <button type="button" id="gauge-fill" class="btn small">From gauge</button>
+              </span>
+              <small id="gauge-hint"></small>
+            </label>
             <label id="severity-row">Severity
               <select name="severity">
                 <option value="">—</option>
@@ -166,6 +172,22 @@
           <label>Name <input name="name" required maxlength="120" /></label>
           <label>Color <input name="color" type="color" /></label>
           <label>Description <textarea name="description" rows="4" placeholder="Put-in, take-out, difficulty, best water levels…"></textarea></label>
+          <fieldset class="obs">
+            <legend>Water levels</legend>
+            <label>Gauge <select id="route-gauge"></select></label>
+            <label>Runnable range, measured as
+              <select id="route-level-param">
+                <option value="00060">Flow (cfs)</option>
+                <option value="00065">Stage (ft)</option>
+              </select>
+            </label>
+            <div class="obs-row levels-row">
+              <label>Too low below <span class="input-row"><input id="route-level-low" type="number" step="any" min="0" /><span class="level-unit">cfs</span></span></label>
+              <label>High above <span class="input-row"><input id="route-level-high" type="number" step="any" min="0" /><span class="level-unit">cfs</span></span></label>
+              <label>Flood above <span class="input-row"><input id="route-level-flood" type="number" step="any" min="0" /><span class="level-unit">cfs</span></span></label>
+            </div>
+            <small class="muted">Leave blank if you don't know yet. Between "too low" and "high" counts as Good. Your observations' gauge readings will help you fill these in over time.</small>
+          </fieldset>
           <div class="coords" id="route-length"></div>
           <div class="editor-actions">
             <button type="button" id="route-delete" class="btn danger">Delete</button>

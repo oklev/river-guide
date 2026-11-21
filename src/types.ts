@@ -89,6 +89,10 @@ export interface Route {
   /** Ordered from put-in (mile 0) to take-out. */
   coords: LatLng[];
   offline?: OfflineInfo;
+  /** USGS gauge used for this run, e.g. "USGS-02217770". */
+  gaugeId?: string;
+  /** Runnable ranges on that gauge. */
+  levels?: RouteLevels;
   createdAt: string;
   updatedAt: string;
 }
@@ -198,3 +202,41 @@ export const PATH_KINDS: Record<PathKind, { label: string; icon: string; color: 
   portage: { label: 'Portage', icon: '🛶', color: '#d32f2f', hint: 'Carry around a hazard, dam or rapid' },
   access: { label: 'Access trail', icon: '🥾', color: '#5d4037', hint: 'Walk between parking and the water' },
 };
+
+/** USGS parameter codes: discharge (cfs) and gage height (ft). */
+export type GaugeParam = '00060' | '00065';
+
+export const GAUGE_PARAMS: Record<GaugeParam, { label: string; unit: string }> = {
+  '00060': { label: 'Flow', unit: 'cfs' },
+  '00065': { label: 'Stage', unit: 'ft' },
+};
+
+export interface GaugeReading {
+  value: number;
+  /** ISO timestamp of the measurement. */
+  time: string;
+}
+
+/** A USGS monitoring location with its latest readings, cached for offline use. */
+export interface Gauge {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  latest: Partial<Record<GaugeParam, GaugeReading>>;
+  latestFetchedAt: string;
+  /** Last 7 days, [epoch ms, value], oldest first. */
+  series?: Partial<Record<GaugeParam, [number, number][]>>;
+  seriesFetchedAt?: string;
+}
+
+/**
+ * Runnable ranges for a route, on one gauge parameter:
+ * below `low` = too low, up to `high` = good, above `high` = high, above `flood` = flood.
+ */
+export interface RouteLevels {
+  param: GaugeParam;
+  low?: number;
+  high?: number;
+  flood?: number;
+}

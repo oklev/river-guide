@@ -20,7 +20,8 @@ import { OFM_MAX_TILES, OSM_ZOOM, clearOsm, deleteOsmTiles, downloadOsm, loadAll
 import { renderOsm, rerenderOsm } from './osmLayer';
 import { openShare } from './share';
 import { detachFromRoute, portageMile, portagesOf } from './portages';
-import { CATEGORIES, PATH_KINDS, ROUTE_COLORS, type LatLng, type OfflineArea, type Route } from './types';
+import { fmtValue, gaugesNearRoute, refreshGauges, routeConditions } from './gauges';
+import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, fmtWalk, getMode } from './ui';
 
 /** Above this, the download button is disabled; keeps a stray 50 km buffer from pulling gigabytes. */
@@ -38,6 +39,11 @@ function offlineLabel(r: Route): string {
   if (r.offline.partial) return 'Offline download incomplete';
   if (r.offline.stale) return 'Offline map outdated (line changed)';
   return `Offline ✓ ${new Date(r.offline.downloadedAt).toLocaleDateString()}`;
+}
+
+function conditionsHtml(r: Route): string {
+  const c = routeConditions(r);
+  return c ? `<div class="conditions">${c.html}</div>` : '';
 }
 
 function popupHtml(r: Route): string {
@@ -64,6 +70,7 @@ function popupHtml(r: Route): string {
     <div class="popup">
       <strong>${escapeHtml(r.name)}</strong>
       <div class="popup-meta">${fmtMi(lengthMi(r.coords))} · ${escapeHtml(offlineLabel(r))}</div>
+      ${conditionsHtml(r)}
       ${r.description ? `<p>${escapeHtml(r.description).replace(/\n/g, '<br>')}</p>` : ''}
       ${alongHtml}
       <div class="popup-actions">
@@ -104,7 +111,7 @@ export function renderRoutes() {
           (r) => `<li data-id="${r.id}">
             <span class="swatch" style="background:${r.color}"></span>
             <span class="li-text"><strong>${escapeHtml(r.name)}</strong>
-              <small>${fmtMi(lengthMi(r.coords))} · ${escapeHtml(offlineLabel(r))}</small></span>
+              <small>${fmtMi(lengthMi(r.coords))} · ${escapeHtml(routeConditions(r)?.text ?? offlineLabel(r))}</small></span>
           </li>`,
         )
         .join('')
@@ -156,6 +163,7 @@ export async function createRoute(coords: LatLng[], name?: string, color?: strin
     updatedAt: now,
   };
   await saveRoute(r); // save right away so the line is never lost
+  void refreshGauges();
   focusRoute(r);
   openDetails(r, true);
 }
@@ -168,6 +176,7 @@ function editLine(r: Route) {
       r.coords = coords;
       if (r.offline) r.offline.stale = true;
       await saveRoute(r);
+      void refreshGauges();
     }
     renderRoutes();
   });
@@ -208,6 +217,28 @@ const detailsForm = $<HTMLFormElement>('route-form');
 const detailsField = (n: string) => detailsForm.elements.namedItem(n) as HTMLInputElement;
 let detailsRoute: Route | null = null;
 
+function fillGaugeChoices(r: Route) {
+  const sel = $<HTMLSelectElement>('route-gauge');
+  const near = gaugesNearRoute(r);
+  sel.innerHTML =
+    `<option value="">${near.length ? 'None' : navigator.onLine ? 'None (no gauges found nearby yet)' : 'None (go online to find gauges)'}</option>` +
+    near
+      .map(({ gauge: g, offKm }) => {
+        const reading = g.latest['00060'] ?? g.latest['00065'];
+        const param: GaugeParam = g.latest['00060'] ? '00060' : '00065';
+        const now = reading ? ` · ${fmtValue(param, reading.value)}` : '';
+        return `<option value="${g.id}">${escapeHtml(g.name)} (${offKm < 0.1 ? 'on route' : `${offKm.toFixed(1)} km away`}${now})</option>`;
+      })
+      .join('');
+  // Suggest the nearest gauge on the river for a route that doesn't have one yet.
+  sel.value = r.gaugeId ?? (near[0] && near[0].offKm <= 1 ? near[0].gauge.id : '');
+}
+
+function syncLevelUnits() {
+  const unit = GAUGE_PARAMS[$<HTMLSelectElement>('route-level-param').value as GaugeParam].unit;
+  for (const el of document.querySelectorAll<HTMLElement>('.level-unit')) el.textContent = unit;
+}
+
 function openDetails(r: Route, isNew: boolean) {
   detailsRoute = r;
   map.closePopup();
@@ -216,7 +247,22 @@ function openDetails(r: Route, isNew: boolean) {
   detailsField('color').value = r.color;
   detailsField('description').value = r.description;
   $('route-length').textContent = `${fmtMi(lengthMi(r.coords))} · mile 0 is where the line starts (use ⇄ to flip)`;
+  fillGaugeChoices(r);
+  const lv = r.levels;
+  ($('route-level-param') as HTMLSelectElement).value = lv?.param ?? '00060';
+  for (const k of ['low', 'high', 'flood'] as const) ($(`route-level-${k}`) as HTMLInputElement).value = lv?.[k]?.toString() ?? '';
+  syncLevelUnits();
   detailsDialog.showModal();
+  // Look for gauges near a route we haven't checked yet, then refresh the list.
+  if (navigator.onLine) {
+    void refreshGauges().then(() => {
+      if (detailsRoute !== r) return;
+      const sel = $<HTMLSelectElement>('route-gauge');
+      const chosen = sel.value;
+      fillGaugeChoices(r);
+      if (chosen) sel.value = chosen; // keep what the user picked meanwhile
+    });
+  }
   if (isNew) detailsField('name').select();
 }
 
@@ -384,6 +430,9 @@ export async function refreshStorageInfo() {
 // ---------- wiring ----------
 export function initRoutes() {
   $('new-route').addEventListener('click', startNewRoute);
+  $('route-level-param').addEventListener('change', syncLevelUnits);
+  // New readings: refresh lists and colours.
+  document.addEventListener('gauges-changed', () => renderRoutes());
 
   $('route-list').addEventListener('click', (e) => {
     const id = (e.target as HTMLElement).closest<HTMLElement>('li[data-id]')?.dataset.id;
@@ -420,7 +469,20 @@ export function initRoutes() {
     detailsRoute.name = detailsField('name').value.trim() || detailsRoute.name;
     detailsRoute.color = detailsField('color').value;
     detailsRoute.description = detailsField('description').value.trim();
+    detailsRoute.gaugeId = $<HTMLSelectElement>('route-gauge').value || undefined;
+    const num = (id: string) => {
+      const v = $<HTMLInputElement>(id).value.trim();
+      return v === '' || !Number.isFinite(Number(v)) ? undefined : Number(v);
+    };
+    const levels = {
+      param: $<HTMLSelectElement>('route-level-param').value as GaugeParam,
+      low: num('route-level-low'),
+      high: num('route-level-high'),
+      flood: num('route-level-flood'),
+    };
+    detailsRoute.levels = levels.low != null || levels.high != null || levels.flood != null ? levels : undefined;
     await saveRoute(detailsRoute);
+    document.dispatchEvent(new CustomEvent('gauges-changed'));
     detailsRoute = null;
     detailsDialog.close();
   });

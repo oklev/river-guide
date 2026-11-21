@@ -24,6 +24,13 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Delete offline data** in the same dialog frees a route's storage. Tiles shared with other saved routes are kept. Deleting a route also deletes its offline data.
 - The map reopens at your last view, so after an offline reload it shows your saved area.
 
+**Live river gauges (USGS)**
+- Gauges near your routes, and in the map view when zoomed in, show as markers with the latest flow (cfs) or stage (ft). Tapping one shows flow and stage with their trend (rising, falling or steady), a 7-day graph, and a link to the USGS page.
+- Each route can use a gauge (the nearest one on the river is suggested) and a **runnable range**: too low below X, high above Y, flood above Z. The route popup and list then show current conditions, for example "57 cfs ↘ · Good", and gauge markers are coloured by level.
+- **Observations:** "From gauge" fills in the gauge reading. It uses the latest value for today, or the daily mean for a past date. If the route has ranges, it also sets the water level. New observations made today are pre-filled automatically when a recent reading exists.
+- The last readings are cached, so offline they still show with their time ("Last reading: 3:00 PM · offline").
+- Data comes from the [USGS Water Data APIs](https://api.waterdata.usgs.gov) (OGC API; no key needed). The legacy waterservices.usgs.gov API isn't used because it shuts down in early 2027.
+
 **Trails, parks & campsites overlay**
 - When you save a route offline, the app can also save OpenStreetMap data for the same corridor. This is on by default.
 - The data shows as a layer you can toggle: shaded parks (city parks as well as national, state and protected areas) with name labels, footpaths and tracks (tap a named trail to see its name), and icons for campsites, shelters, marinas, viewpoints, restrooms and drinking water.

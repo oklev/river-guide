@@ -1,4 +1,4 @@
-import type { OfflineArea, Photo, Portage, RiverPoint, Route, Track } from './types';
+import type { Gauge, OfflineArea, Photo, Portage, RiverPoint, Route, Track } from './types';
 
 export const state = {
   points: [] as RiverPoint[],
@@ -7,6 +7,8 @@ export const state = {
   /** Photo metadata and thumbnails; full images live in the photoBlobs store. */
   photos: [] as Photo[],
   portages: [] as Portage[],
+  /** USGS gauges seen near routes or in the map view (cached readings). */
+  gauges: [] as Gauge[],
 };
 
 /** Every corridor downloaded for a route. */

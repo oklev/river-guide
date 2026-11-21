@@ -7,6 +7,7 @@ import { getAll } from './store';
 import { toGeoJSON } from './geojson';
 import { importFile, initShare } from './share';
 import { initPortages, renderPortages } from './portages';
+import { initGauges, refreshGauges, renderGauges } from './gauges';
 import { initPoints, renderPoints } from './points';
 import { initRoutes, refreshStorageInfo, renderRoutes } from './routes';
 import { initOsmLayer, renderOsm } from './osmLayer';
@@ -23,6 +24,7 @@ initTracks();
 initPhotos();
 initShare();
 initPortages();
+initGauges();
 
 // ---------- sidebar ----------
 $('toggle-sidebar').addEventListener('click', () => {
@@ -81,20 +83,23 @@ window.addEventListener('offline', syncOnline);
 syncOnline();
 
 // ---------- boot ----------
-const [points, routes, tracks, photos, portages, osmTiles] = await Promise.all([
+const [points, routes, tracks, photos, portages, gauges, osmTiles] = await Promise.all([
   getAll('points'),
   getAll('routes'),
   getAll('tracks'),
   getAll('photos'),
   getAll('portages'),
+  getAll('gauges'),
   loadAllOsm(),
 ]);
-Object.assign(state, { points, routes, tracks, photos, portages });
+Object.assign(state, { points, routes, tracks, photos, portages, gauges });
 await finishInterruptedTracks();
 renderOsm(osmTiles);
+renderGauges();
 renderRoutes();
 renderPortages();
 renderTracks();
 renderPhotos();
 renderPoints();
 void refreshStorageInfo();
+void refreshGauges();

@@ -120,8 +120,15 @@ export function fromGeoJSON(data: unknown): ParsedData {
         });
       } else {
         const coords: LatLng[] = valid.map(({ c }) => [c[1], c[0]]);
+        const lv = p.levels;
+        const num = (v: unknown) => (isNum(v) ? v : undefined);
         out.routes.push({
           ...base,
+          gaugeId: typeof p.gaugeId === 'string' && /^[A-Z]+-[\w-]+$/.test(p.gaugeId) ? p.gaugeId : undefined,
+          levels:
+            lv && (lv.param === '00060' || lv.param === '00065')
+              ? { param: lv.param, low: num(lv.low), high: num(lv.high), flood: num(lv.flood) }
+              : undefined,
           description: String(p.description ?? ''),
           color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : ROUTE_COLORS[out.routes.length % ROUTE_COLORS.length],
           coords,

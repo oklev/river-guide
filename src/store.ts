@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, Track } from './types';
+import type { Gauge, OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, Track } from './types';
 
 const DB_NAME = 'river-guide';
 
@@ -11,13 +11,14 @@ interface Stores {
   photos: Photo;
   photoBlobs: PhotoBlob;
   portages: Portage;
+  gauges: Gauge;
 }
 type StoreName = keyof Stores;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
-  dbPromise ??= openDB(DB_NAME, 5, {
+  dbPromise ??= openDB(DB_NAME, 6, {
     upgrade(database, oldVersion) {
       if (oldVersion < 1) database.createObjectStore('points', { keyPath: 'id' });
       if (oldVersion < 2) database.createObjectStore('routes', { keyPath: 'id' });
@@ -28,6 +29,7 @@ function db(): Promise<IDBPDatabase> {
         database.createObjectStore('photoBlobs', { keyPath: 'id' });
       }
       if (oldVersion < 5) database.createObjectStore('portages', { keyPath: 'id' });
+      if (oldVersion < 6) database.createObjectStore('gauges', { keyPath: 'id' });
     },
   });
   return dbPromise;
