@@ -25,6 +25,21 @@ const layer = L.layerGroup();
 const markers = new Map<string, L.Marker>();
 const findGauge = (id: string) => state.gauges.find((g) => g.id === id);
 
+/** Gauges whose newest reading is older than this are treated as out of service. */
+const ACTIVE_WINDOW = 7 * 24 * 3600_000;
+
+/**
+ * Whether a gauge was still reporting when we last checked it. Measured against
+ * the fetch time, not "now", so cached gauges don't disappear while offline.
+ */
+export function isActive(g: Gauge): boolean {
+  const times = PARAMS.map((p) => Date.parse(g.latest[p]?.time ?? '')).filter(Number.isFinite);
+  if (!times.length) return false;
+  const checked = Date.parse(g.latestFetchedAt) || Date.now();
+  return checked - Math.max(...times) <= ACTIVE_WINDOW;
+}
+const activeGauges = () => state.gauges.filter(isActive);
+
 // ---------- fetching ----------
 async function getJson(url: string): Promise<any> {
   const res = await fetch(url);
@@ -185,11 +200,12 @@ export async function freshGauge(id: string): Promise<Gauge | undefined> {
 }
 
 // ---------- routes & levels ----------
-/** Gauges within reach of a route, nearest first. */
+/** Active gauges within reach of a route, nearest first (plus the route's chosen gauge, even if inactive). */
 export function gaugesNearRoute(r: Route, km = ROUTE_PAD_KM): { gauge: Gauge; offKm: number }[] {
   return state.gauges
+    .filter((g) => isActive(g) || g.id === r.gaugeId)
     .map((gauge) => ({ gauge, offKm: locateOnLine(r.coords, [gauge.lat, gauge.lng])?.offKm ?? Infinity }))
-    .filter((x) => x.offKm <= km)
+    .filter((x) => x.offKm <= km || x.gauge.id === r.gaugeId)
     .sort((a, b) => a.offKm - b.offKm);
 }
 
@@ -197,12 +213,12 @@ export function gaugesNearRoute(r: Route, km = ROUTE_PAD_KM): { gauge: Gauge; of
 export function routeGauge(r: Route): { gauge: Gauge; chosen: boolean } | null {
   const chosen = r.gaugeId ? findGauge(r.gaugeId) : undefined;
   if (chosen) return { gauge: chosen, chosen: true };
-  const near = gaugesNearRoute(r, 3)[0];
+  const near = gaugesNearRoute(r, 3).find((x) => x.offKm <= 3);
   return near ? { gauge: near.gauge, chosen: false } : null;
 }
 
 export function nearestGauge(lat: number, lng: number, maxKm = 15): Gauge | undefined {
-  return state.gauges
+  return activeGauges()
     .map((g) => ({ g, d: distKm([lat, lng], [g.lat, g.lng]) }))
     .filter((x) => x.d <= maxKm)
     .sort((a, b) => a.d - b.d)[0]?.g;
@@ -368,7 +384,16 @@ function upsertMarker(g: Gauge) {
 }
 
 export function renderGauges() {
-  for (const g of state.gauges) upsertMarker(g);
+  // A route's chosen gauge stays visible even if it has gone quiet.
+  const chosen = new Set(state.routes.map((r) => r.gaugeId).filter(Boolean));
+  for (const g of state.gauges) {
+    if (isActive(g) || chosen.has(g.id)) upsertMarker(g);
+    else {
+      const m = markers.get(g.id);
+      if (m) layer.removeLayer(m);
+      markers.delete(g.id);
+    }
+  }
 }
 
 export function initGauges() {
