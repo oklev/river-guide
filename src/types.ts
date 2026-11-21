@@ -2,6 +2,8 @@ export type Category =
   | 'hazard'
   | 'rapid'
   | 'access'
+  | 'parking'
+  | 'changing'
   | 'campsite'
   | 'poi'
   | 'shuttle'
@@ -95,6 +97,8 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   hazard: { label: 'Hazard', icon: '⚠', color: '#c0392b' },
   rapid: { label: 'Rapid', icon: '≋', color: '#e67e22' },
   access: { label: 'Access point', icon: '⛵', color: '#27ae60' },
+  parking: { label: 'Parking', icon: 'P', color: '#3949ab' },
+  changing: { label: 'Changing room', icon: '👕', color: '#ad1457' },
   campsite: { label: 'Campsite', icon: '⛺', color: '#8e44ad' },
   poi: { label: 'Point of interest', icon: '★', color: '#2980b9' },
   shuttle: { label: 'Shuttle / outfitter', icon: '🚐', color: '#16a085' },

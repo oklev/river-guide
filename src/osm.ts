@@ -42,7 +42,7 @@ export const POI_TYPES: Record<string, PoiType> = {
   picnic_site: { label: 'Picnic area', icon: '🧺', category: 'poi', minZoom: 14 },
   toilets: { label: 'Restrooms', icon: '🚻', category: 'poi', minZoom: 13 },
   drinking_water: { label: 'Drinking water', icon: '🚰', category: 'poi', minZoom: 14 },
-  parking: { label: 'Parking', icon: 'P', category: 'poi', minZoom: 14, minZoomElsewhere: 16 },
+  parking: { label: 'Parking', icon: 'P', category: 'parking', minZoom: 14, minZoomElsewhere: 16 },
 };
 
 export const poiType = (cls: string, sub?: string): PoiType | undefined =>
