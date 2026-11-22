@@ -173,13 +173,15 @@ export interface Photo {
   locSource?: PhotoLocSource;
   /** For track matches: seconds to the nearest fix used. */
   matchGapSec?: number;
+  /** Wide image (2:1 or more), shown scrollable in the viewer. */
+  panorama?: boolean;
   createdAt: string;
 }
 
 /** Full-size image, stored separately so listing photos doesn't load every image. */
 export interface PhotoBlob {
   id: string;
-  /** Resized JPEG (long edge ≤ 1600 px). */
+  /** Resized JPEG (long edge ≤ 1600 px; panoramas: short edge ≤ 1200 px). */
   blob: Blob;
 }
 

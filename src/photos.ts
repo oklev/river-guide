@@ -7,9 +7,15 @@ import { positionAt } from './tracks';
 import { openNewPoint } from './points';
 import type { Photo } from './types';
 import { $, escapeHtml, getMode, setMode } from './ui';
+import { isNative } from './platform';
 
 const FULL_PX = 1600;
 const THUMB_PX = 240;
+/** Panoramas (at least 2:1) are sized by their short edge so they stay sharp when scrolled. */
+const PANO_RATIO = 2;
+const PANO_SHORT_PX = 1200;
+const PANO_LONG_PX = 8000;
+const PANO_THUMB_SHORT_PX = 160;
 /** A GPS fix this recent counts as "where the photo was taken" for Photo here (ms). */
 const FRESH_FIX_MS = 2 * 60_000;
 
@@ -58,17 +64,29 @@ async function readMeta(file: File): Promise<{ takenAt?: number; lat?: number; l
   }
 }
 
-async function resize(file: Blob, maxPx: number, quality: number): Promise<Blob> {
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  const scale = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+function encode(bmp: ImageBitmap, scale: number, quality: number): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bmp.width * scale);
-  canvas.height = Math.round(bmp.height * scale);
+  canvas.width = Math.max(1, Math.round(bmp.width * scale));
+  canvas.height = Math.max(1, Math.round(bmp.height * scale));
   canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  bmp.close();
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode image'))), 'image/jpeg', quality),
   );
+}
+
+/** Decode once, then make the thumbnail and the stored full-size copy. */
+async function makeImages(file: Blob): Promise<{ thumb: Blob; full: Blob; panorama: boolean }> {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  try {
+    const long = Math.max(bmp.width, bmp.height);
+    const short = Math.min(bmp.width, bmp.height);
+    const panorama = long / short >= PANO_RATIO;
+    const fullScale = panorama ? Math.min(1, PANO_SHORT_PX / short, PANO_LONG_PX / long) : Math.min(1, FULL_PX / long);
+    const thumbScale = panorama ? Math.min(1, PANO_THUMB_SHORT_PX / short) : Math.min(1, THUMB_PX / long);
+    return { thumb: await encode(bmp, thumbScale, 0.75), full: await encode(bmp, fullScale, 0.82), panorama };
+  } finally {
+    bmp.close();
+  }
 }
 
 /** Fill in a missing location from recorded/imported tracks. */
@@ -83,6 +101,8 @@ function matchToTrack(p: Photo): boolean {
 interface ImportOptions {
   /** A recent GPS fix to use if the photo has no location of its own (Photo here). */
   fix?: { lat: number; lng: number; time: number };
+  /** Don't show an alert per failed file (the caller reports instead). */
+  quiet?: boolean;
 }
 
 /** Store photos as drafts, locating each from EXIF GPS, a GPS track, or a fresh fix. */
@@ -92,9 +112,11 @@ export async function importFiles(files: File[], opts: ImportOptions = {}): Prom
     if (!file.type.startsWith('image/') && !/\.(jpe?g|png|heic|webp)$/i.test(file.name)) continue;
     try {
       const meta = await readMeta(file);
+      const images = await makeImages(file);
       const p: Photo = {
         id: crypto.randomUUID(),
-        thumb: await resize(file, THUMB_PX, 0.75),
+        thumb: images.thumb,
+        ...(images.panorama ? { panorama: true } : {}),
         fileName: file.name,
         takenAt: meta.takenAt ?? (file.lastModified || undefined),
         createdAt: new Date().toISOString(),
@@ -103,12 +125,12 @@ export async function importFiles(files: File[], opts: ImportOptions = {}): Prom
       else if (opts.fix && Math.abs((p.takenAt ?? Date.now()) - opts.fix.time) < FRESH_FIX_MS)
         Object.assign(p, { lat: opts.fix.lat, lng: opts.fix.lng, locSource: 'gps' });
       else matchToTrack(p);
-      await put('photoBlobs', { id: p.id, blob: await resize(file, FULL_PX, 0.82) });
+      await put('photoBlobs', { id: p.id, blob: images.full });
       await put('photos', p);
       state.photos.push(p);
       added.push(p);
     } catch (err) {
-      alert(`Couldn't import ${file.name}: ${(err as Error).message}`);
+      if (!opts.quiet) alert(`Couldn't import ${file.name}: ${(err as Error).message}`);
     }
   }
   renderPhotos();
@@ -167,9 +189,17 @@ export async function openViewer(id: string) {
   if (!p) return;
   if (viewerUrl) URL.revokeObjectURL(viewerUrl);
   viewerUrl = URL.createObjectURL(full?.blob ?? p.thumb);
-  $<HTMLImageElement>('viewer-img').src = viewerUrl;
-  $('viewer-caption').textContent = describe(p);
-  $<HTMLDialogElement>('photo-viewer').showModal();
+  const dialog = $<HTMLDialogElement>('photo-viewer');
+  const img = $<HTMLImageElement>('viewer-img');
+  // Panoramas fill the height and scroll sideways, starting from the middle.
+  dialog.classList.toggle('pano', !!p.panorama);
+  img.onload = () => {
+    const box = $('viewer-scroll');
+    box.scrollLeft = (box.scrollWidth - box.clientWidth) / 2;
+  };
+  img.src = viewerUrl;
+  $('viewer-caption').textContent = describe(p) + (p.panorama ? ' · swipe to look around' : '');
+  dialog.showModal();
 }
 
 // ---------- describing ----------
@@ -189,7 +219,7 @@ function locLabel(p: Photo): string {
       return 'No location yet';
   }
 }
-const describe = (p: Photo) => `${fmtTime(p.takenAt)} · ${locLabel(p)}`;
+const describe = (p: Photo) => `${p.panorama ? 'Panorama · ' : ''}${fmtTime(p.takenAt)} · ${locLabel(p)}`;
 
 // ---------- drafts on the map & review list ----------
 function draftPopup(p: Photo) {
@@ -293,7 +323,7 @@ function currentFix() {
   });
 }
 
-function toast(html: string, ms = 6000) {
+export function toast(html: string, ms = 6000) {
   const el = $('toast');
   el.innerHTML = html;
   el.hidden = false;
@@ -323,7 +353,9 @@ export function initPhotos() {
   });
 
   // Photo here: start a GPS fix the moment the button is tapped, then open the camera.
+  // (In the Android app the button starts a photo session instead: see cameraRoll.ts.)
   $('photo-here').addEventListener('click', () => {
+    if (isNative) return;
     pendingFix = currentFix();
     $<HTMLInputElement>('photo-here-input').click();
   });

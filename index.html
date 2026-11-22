@@ -92,6 +92,11 @@
         <span class="rec-dot">●</span> Recording <span id="rec-stats"></span>
         <button id="rec-stop" class="btn small">Stop</button>
       </div>
+      <div id="photo-session" class="rec-banner photo-session" hidden>
+        📷 <span id="photo-session-text">Photo session</span>
+        <button id="photo-session-camera" class="btn small primary">Camera</button>
+        <button id="photo-session-end" class="btn small">End</button>
+      </div>
       <div id="toast" class="toast" role="status" hidden></div>
 
       <div id="route-toolbar" class="route-toolbar" hidden>
@@ -292,7 +297,7 @@
       </dialog>
 
       <dialog id="photo-viewer" class="viewer">
-        <img id="viewer-img" alt="" />
+        <div id="viewer-scroll" class="viewer-scroll"><img id="viewer-img" alt="" /></div>
         <div class="viewer-bar">
           <span id="viewer-caption" class="small"></span>
           <button type="button" id="viewer-close" class="btn small">Close</button>

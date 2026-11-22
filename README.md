@@ -45,6 +45,12 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Add as my point** in an icon's popup turns that feature into one of your own editable points.
 - It works anywhere OpenStreetMap has coverage, not just Georgia, because only the area around your routes is downloaded.
 
+**Photos**
+- **Import photos** (Points tab) turns pictures into draft points. Each is located from its own GPS tag, matched by time to a recorded GPS track, or placed by hand, then reviewed: make a point, move it, or discard it.
+- **Photo sessions (Android app):** the 📷 button opens your phone's own camera app, so you get its panorama, zoom and night modes, and photos save to your camera roll as usual. Every photo taken since the session started is pulled into River Guide each time you switch back, located from its GPS tag, your track, or your current position. A banner shows the count, with **Camera** to shoot more and **End** to finish. Needs "Allow all" photo access, since limited access hides new photos.
+- In a browser, 📷 takes a single photo and tags it with your current position.
+- **Panoramas** (2:1 or wider) are kept at higher resolution and open full-height in the viewer, where you swipe to look around.
+
 **Data & sharing**
 - **Share…** on a route saves it as one `.riverguide.zip` file: the route, your points within a chosen distance of it, their photos, and optionally your GPS tracks along it. Offline maps aren't included; they can be downloaded again. Inside is a standard `route.geojson` plus a `photos/` folder.
 - **Import file** accepts `.riverguide.zip` and plain GeoJSON. Items are matched by ID and the newer copy wins, so moving data back and forth between devices doesn't duplicate anything or overwrite newer edits. Each device keeps its own offline downloads.
@@ -113,6 +119,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/osm.ts` | OpenFreeMap vector tile download and decoding into trail/park/POI features |
 | `src/osmLayer.ts` | Renders the trails, parks & campsites overlay |
 | `src/geo.ts` | Distance, length, project-point-onto-line math |
+| `src/cameraRoll.ts` | Android photo sessions (camera app + camera-roll import) |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |
@@ -120,6 +127,4 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 ## Roadmap ideas
 
 - Snap traced routes to the actual river channel (NHD flowlines)
-- Photos on points
 - Shared backend so multiple people can edit
-- Read original photo GPS on Android via a native picker (ACCESS_MEDIA_LOCATION) when the WebView picker strips it

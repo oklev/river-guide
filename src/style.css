@@ -255,6 +255,12 @@ body.offline .offline-badge { display: inline-block; }
   padding: 6px 8px 6px 14px; z-index: 1000; font-size: 14px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
 }
 .rec-banner[hidden], .toast[hidden], .hint[hidden] { display: none; }
+/* Photo session banner sits below the recording banner when both show. */
+.photo-session { max-width: calc(100vw - 16px); }
+#photo-session-text { overflow: hidden; text-overflow: ellipsis; }
+body.recording .photo-session { top: calc(var(--topbar-h) + 56px); }
+body.photo-session-on .hint { top: calc(var(--topbar-h) + 56px); }
+body.recording.photo-session-on .hint { top: calc(var(--topbar-h) + 102px); }
 #rec-stats { font-variant-numeric: tabular-nums; color: var(--muted); }
 body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .toast {
@@ -293,7 +299,11 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .viewer { border: 0; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); background: #000; max-width: 100vw; max-height: 100dvh; width: 100vw; height: 100dvh; }
 .viewer::backdrop { background: #000; }
 .viewer[open] { display: flex; flex-direction: column; }
-.viewer img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+.viewer-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; }
+.viewer-scroll img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* Panoramas: full height, scroll sideways. */
+.viewer.pano .viewer-scroll { justify-content: flex-start; }
+.viewer.pano .viewer-scroll img { max-width: none; max-height: none; height: 100%; width: auto; }
 .viewer-bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; color: #ddd; }
 .btn.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 

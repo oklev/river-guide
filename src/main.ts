@@ -15,6 +15,7 @@ import { initOsmLayer, renderOsm } from './osmLayer';
 import { loadAllOsm } from './osm';
 import { finishInterruptedTracks, initTracks, renderTracks } from './tracks';
 import { initPhotos, renderPhotos } from './photos';
+import { initCameraRoll, syncSession } from './cameraRoll';
 import { initSystemBars, saveFile } from './platform';
 import { $, prefs } from './ui';
 
@@ -23,6 +24,7 @@ initPoints();
 initRoutes();
 initTracks();
 initPhotos();
+const hasCameraRoll = initCameraRoll();
 initShare();
 initPortages();
 initGauges();
@@ -110,3 +112,5 @@ renderPoints();
 void refreshStorageInfo();
 void refreshGauges();
 void refreshNav();
+// Pick up photos taken in a photo session while the app was closed.
+if (hasCameraRoll) void syncSession();
