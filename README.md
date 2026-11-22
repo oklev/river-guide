@@ -28,8 +28,13 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - Gauges near your routes, and in the map view when zoomed in, show as markers with the latest flow (cfs) or stage (ft). Tapping one shows flow and stage with their trend (rising, falling or steady), a 7-day graph, and a link to the USGS page.
 - Each route can use a gauge (the nearest one on the river is suggested) and a **runnable range**: too low below X, high above Y, flood above Z. The route popup and list then show current conditions, for example "57 cfs ↘ · Good", and gauge markers are coloured by level.
 - **Observations:** "From gauge" fills in the gauge reading. It uses the latest value for today, or the daily mean for a past date. If the route has ranges, it also sets the water level. New observations made today are pre-filled automatically when a recent reading exists.
-- The last readings are cached, so offline they still show with their time ("Last reading: 3:00 PM · offline").
+- The last readings are cached, so offline they still show with their time ("Last reading: 3:00 PM · offline"). Gauges that haven't reported in the past 7 days are hidden, unless a route uses them.
 - Data comes from the [USGS Water Data APIs](https://api.waterdata.usgs.gov) (OGC API; no key needed). The legacy waterservices.usgs.gov API isn't used because it shuts down in early 2027.
+
+**Navigation channel (USACE charts)**
+- On big commercial rivers (Tennessee, Cumberland, Ohio, Mississippi and so on), each route shows the **barge sailing line** (purple dashes), red and green **channel markers**, **restricted areas** (such as the water above and below dams), charted **hazards** (obstructions, rocks and wrecks) and the **bridge spans barges use** (purple). Tap any of them for an explanation.
+- It's fetched automatically for every route when you're online, refreshed monthly or when you edit the line, and saved so it works offline. It's only a few KB per route.
+- Data comes from the US Army Corps of Engineers' [Inland Electronic Navigational Charts](https://ienccloud.us/) (public, no key). Small rivers aren't charted, so nothing is shown there. Charts can be out of date, so on the water the actual buoys take priority.
 
 **Trails, parks & campsites overlay**
 - When you save a route offline, the app can also save OpenStreetMap data for the same corridor. This is on by default.
@@ -108,13 +113,13 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/osm.ts` | OpenFreeMap vector tile download and decoding into trail/park/POI features |
 | `src/osmLayer.ts` | Renders the trails, parks & campsites overlay |
 | `src/geo.ts` | Distance, length, project-point-onto-line math |
+| `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |
 
 ## Roadmap ideas
 
 - Snap traced routes to the actual river channel (NHD flowlines)
-- Live USGS gauge readings for gauge points
 - Photos on points
 - Shared backend so multiple people can edit
 - Read original photo GPS on Android via a native picker (ACCESS_MEDIA_LOCATION) when the WebView picker strips it

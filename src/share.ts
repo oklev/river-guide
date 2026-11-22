@@ -11,6 +11,7 @@ import { renderRoutes } from './routes';
 import { renderTracks } from './tracks';
 import { renderPhotos } from './photos';
 import { renderPortages } from './portages';
+import { refreshNav } from './nav';
 import type { Photo, Portage, RiverPoint, Route, Track } from './types';
 import { $, fmtBytes } from './ui';
 
@@ -192,6 +193,7 @@ export async function importFile(file: File) {
   renderTracks();
   renderPhotos();
   renderPortages();
+  void refreshNav();
   if (result.bounds.length) map.fitBounds(L.latLngBounds(result.bounds), { padding: [40, 40], maxZoom: 15 });
   const changes = [result.added && `${result.added} new`, result.updated && `${result.updated} updated`, result.skipped && `${result.skipped} unchanged (yours is newer or the same)`]
     .filter(Boolean)

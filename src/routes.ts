@@ -21,6 +21,7 @@ import { renderOsm, rerenderOsm } from './osmLayer';
 import { openShare } from './share';
 import { detachFromRoute, portageMile, portagesOf } from './portages';
 import { fmtValue, gaugesNearRoute, refreshGauges, routeConditions } from './gauges';
+import { forgetNav, refreshNav } from './nav';
 import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route } from './types';
 import { $, escapeHtml, fmtBytes, fmtMi, fmtWalk, getMode } from './ui';
 
@@ -164,6 +165,7 @@ export async function createRoute(coords: LatLng[], name?: string, color?: strin
   };
   await saveRoute(r); // save right away so the line is never lost
   void refreshGauges();
+  void refreshNav();
   focusRoute(r);
   openDetails(r, true);
 }
@@ -177,6 +179,7 @@ function editLine(r: Route) {
       if (r.offline) r.offline.stale = true;
       await saveRoute(r);
       void refreshGauges();
+      void refreshNav();
     }
     renderRoutes();
   });
@@ -497,6 +500,7 @@ export function initRoutes() {
     await removeOfflineData(r);
     await del('routes', r.id);
     await detachFromRoute(r.id);
+    await forgetNav(r.id);
     state.routes = state.routes.filter((x) => x.id !== r.id);
     detailsRoute = null;
     detailsDialog.close();

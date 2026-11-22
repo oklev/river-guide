@@ -240,3 +240,31 @@ export interface RouteLevels {
   high?: number;
   flood?: number;
 }
+
+/** What a feature from the USACE navigation charts represents. */
+export type NavKind = 'sailing-line' | 'mark' | 'danger-mark' | 'restricted' | 'hazard' | 'barge-span';
+
+/** One feature from the USACE Inland Electronic Navigational Charts, trimmed to a route. */
+export interface NavFeature {
+  kind: NavKind;
+  /** Points: one [lat, lng]. Lines: runs of coords. Areas: rings. */
+  point?: LatLng;
+  lines?: LatLng[][];
+  rings?: LatLng[][];
+  name?: string;
+  info?: string;
+  /** e.g. "Red", "Green" for lateral marks. */
+  color?: string;
+  category?: string;
+  clearanceFt?: number;
+  widthFt?: number;
+}
+
+/** Navigation-chart features along one route, cached for offline use. */
+export interface RouteNav {
+  routeId: string;
+  /** Fingerprint of the route line the data was fetched for. */
+  key: string;
+  fetchedAt: string;
+  features: NavFeature[];
+}
