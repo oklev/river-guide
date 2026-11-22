@@ -20,14 +20,17 @@ const API = 'https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Se
 const PAD_KM = 1;
 /** Re-check the charts this often (they're updated monthly). */
 const NAV_TTL = 30 * 24 * 3600_000;
+/** Bump when what's fetched or kept changes, so saved data is refreshed. */
+const NAV_DATA_VERSION = 2;
 
-const LAYERS: { id: number; kind: NavKind; label: string }[] = [
+/** padKm: how far from the route to look (restricted zones matter even a little way off, e.g. at a dam above the put-in). */
+const LAYERS: { id: number; kind: NavKind; label: string; padKm?: number }[] = [
   { id: 46, kind: 'sailing-line', label: 'Sailing line' },
   { id: 15, kind: 'mark', label: 'Channel buoy' },
   { id: 14, kind: 'mark', label: 'Channel light' },
   { id: 6, kind: 'mark', label: 'Special-purpose buoy' },
   { id: 2, kind: 'danger-mark', label: 'Isolated danger buoy' },
-  { id: 83, kind: 'restricted', label: 'Restricted area' },
+  { id: 83, kind: 'restricted', label: 'Restricted area', padKm: 3 },
   { id: 19, kind: 'hazard', label: 'Obstruction' },
   { id: 42, kind: 'hazard', label: 'Obstruction' },
   { id: 81, kind: 'hazard', label: 'Obstruction' },
@@ -47,7 +50,7 @@ const inFlight = new Set<string>();
 function routeKey(r: Route): string {
   let h = 0;
   for (const [lat, lng] of r.coords) h = (h * 31 + Math.round(lat * 1e5) * 7 + Math.round(lng * 1e5)) | 0;
-  return `${r.coords.length}:${h}`;
+  return `v${NAV_DATA_VERSION}:${r.coords.length}:${h}`;
 }
 
 function bbox(coords: LatLng[], km: number): string {
@@ -106,7 +109,7 @@ function clipLine(route: LatLng[], line: LatLng[]): LatLng[][] {
   return runs;
 }
 
-function toFeature(route: LatLng[], kind: NavKind, label: string, f: any): NavFeature | null {
+function toFeature(route: LatLng[], kind: NavKind, label: string, f: any, padKm = PAD_KM): NavFeature | null {
   const a: Record<string, unknown> = f.attributes ?? {};
   const g = f.geometry ?? {};
   const categoryKey = Object.keys(a).find((k) => k.startsWith('Category_of_'));
@@ -122,7 +125,7 @@ function toFeature(route: LatLng[], kind: NavKind, label: string, f: any): NavFe
     base.clearanceFt = num(a, 'Vertical_Clearance') ?? num(a, 'Vertical_Clearance_Closed');
     base.widthFt = num(a, 'Horizontal_Clearance');
   }
-  const isNear = (p: LatLng) => (locateOnLine(route, p)?.offKm ?? Infinity) <= PAD_KM;
+  const isNear = (p: LatLng) => (locateOnLine(route, p)?.offKm ?? Infinity) <= padKm;
   if (typeof g.x === 'number') {
     const point: LatLng = [g.y, g.x];
     return isNear(point) ? { ...base, point } : null;
@@ -139,15 +142,14 @@ function toFeature(route: LatLng[], kind: NavKind, label: string, f: any): NavFe
 }
 
 async function fetchNav(r: Route): Promise<NavFeature[]> {
-  const box = bbox(r.coords, PAD_KM);
   const out: NavFeature[] = [];
   // A few requests at a time, to be polite to the server.
   for (let i = 0; i < LAYERS.length; i += 4) {
     const batch = LAYERS.slice(i, i + 4);
-    const results = await Promise.all(batch.map((l) => queryLayer(l.id, box)));
+    const results = await Promise.all(batch.map((l) => queryLayer(l.id, bbox(r.coords, l.padKm ?? PAD_KM))));
     results.forEach((features, j) => {
       for (const f of features) {
-        const nf = toFeature(r.coords, batch[j].kind, batch[j].label, f);
+        const nf = toFeature(r.coords, batch[j].kind, batch[j].label, f, batch[j].padKm);
         if (nf) out.push(nf);
       }
     });
