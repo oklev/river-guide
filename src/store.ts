@@ -33,6 +33,20 @@ function db(): Promise<IDBPDatabase> {
       if (oldVersion < 6) database.createObjectStore('gauges', { keyPath: 'id' });
       if (oldVersion < 7) database.createObjectStore('nav', { keyPath: 'routeId' });
     },
+    // Another tab running an older version is holding the database open, so the
+    // upgrade (and every read/write) waits. Say so instead of hanging silently.
+    blocked() {
+      alert('River Guide was updated. Close any other River Guide tabs (or reload them) to finish updating.');
+    },
+    // A newer version opened in another tab: let it upgrade, and reload this one.
+    blocking() {
+      void dbPromise?.then((d) => d.close());
+      dbPromise = null;
+      if (confirm('River Guide was updated in another tab. Reload this tab now?')) location.reload();
+    },
+    terminated() {
+      dbPromise = null;
+    },
   });
   return dbPromise;
 }
