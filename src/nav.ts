@@ -2,7 +2,7 @@ import L from 'leaflet';
 import { layersControl, map } from './map';
 import { state } from './state';
 import { del, put } from './store';
-import { locateOnLine } from './geo';
+import { distKm, locateOnLine } from './geo';
 import type { LatLng, NavFeature, NavKind, Route, RouteNav } from './types';
 import { escapeHtml, getMode, prefs } from './ui';
 
@@ -16,21 +16,23 @@ import { escapeHtml, getMode, prefs } from './ui';
  * Fetched per route (a few KB each) whenever online, and kept for offline use.
  */
 const API = 'https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer';
-/** Keep chart features within this distance of the route line (km). */
+/** Keep chart features within this distance of the route line (km)… */
 const PAD_KM = 1;
+/** …and follow the river this far above the put-in and below the take-out (routes run downstream). */
+const UPSTREAM_KM = 3;
+const DOWNSTREAM_KM = 5;
 /** Re-check the charts this often (they're updated monthly). */
 const NAV_TTL = 30 * 24 * 3600_000;
 /** Bump when what's fetched or kept changes, so saved data is refreshed. */
-const NAV_DATA_VERSION = 2;
+const NAV_DATA_VERSION = 4;
 
-/** padKm: how far from the route to look (restricted zones matter even a little way off, e.g. at a dam above the put-in). */
-const LAYERS: { id: number; kind: NavKind; label: string; padKm?: number }[] = [
+const LAYERS: { id: number; kind: NavKind; label: string }[] = [
   { id: 46, kind: 'sailing-line', label: 'Sailing line' },
   { id: 15, kind: 'mark', label: 'Channel buoy' },
   { id: 14, kind: 'mark', label: 'Channel light' },
   { id: 6, kind: 'mark', label: 'Special-purpose buoy' },
   { id: 2, kind: 'danger-mark', label: 'Isolated danger buoy' },
-  { id: 83, kind: 'restricted', label: 'Restricted area', padKm: 3 },
+  { id: 83, kind: 'restricted', label: 'Restricted area' },
   { id: 19, kind: 'hazard', label: 'Obstruction' },
   { id: 42, kind: 'hazard', label: 'Obstruction' },
   { id: 81, kind: 'hazard', label: 'Obstruction' },
@@ -92,9 +94,53 @@ const num = (a: Record<string, unknown>, k: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
-/** Split a polyline into the runs that pass within PAD_KM of the route. */
+/** Within PAD_KM of a line (the route, extended along the river). */
+const nearRoute = (corridor: LatLng[], p: LatLng) => (locateOnLine(corridor, p)?.offKm ?? Infinity) <= PAD_KM;
+
+/** Walk along a polyline from index i in direction dir (±1) for km, returning the points passed. */
+function walk(line: LatLng[], i: number, dir: 1 | -1, km: number): LatLng[] {
+  const out: LatLng[] = [];
+  let done = 0;
+  for (let j = i + dir; j >= 0 && j < line.length && done < km; j += dir) {
+    done += distKm(line[j - dir], line[j]);
+    out.push(line[j]);
+  }
+  return out;
+}
+
+function nearestVertex(line: LatLng[], p: LatLng): { i: number; d: number } {
+  let best = { i: -1, d: Infinity };
+  line.forEach((q, i) => {
+    const d = distKm(p, q);
+    if (d < best.d) best = { i, d };
+  });
+  return best;
+}
+
+/**
+ * The route plus the river UPSTREAM_KM above its put-in and DOWNSTREAM_KM below
+ * its take-out, following the charted sailing line so distances are measured
+ * along the river (around bends), not as the crow flies. Routes are assumed to
+ * be drawn downstream.
+ */
+function riverCorridor(route: LatLng[], sailing: LatLng[][]): LatLng[] {
+  const start = route[0];
+  const end = route[route.length - 1];
+  for (const line of sailing) {
+    const s = nearestVertex(line, start);
+    const e = nearestVertex(line, end);
+    if (s.d > PAD_KM || e.d > PAD_KM || s.i === e.i) continue;
+    const down: 1 | -1 = e.i > s.i ? 1 : -1;
+    const above = walk(line, s.i, (-down) as 1 | -1, UPSTREAM_KM).reverse();
+    const below = walk(line, e.i, down, DOWNSTREAM_KM);
+    return [...above, ...route, ...below];
+  }
+  return route; // no charted channel here
+}
+
+/** Split a polyline into the runs that pass near the route. */
 function clipLine(route: LatLng[], line: LatLng[]): LatLng[][] {
-  const near = line.map((p) => (locateOnLine(route, p)?.offKm ?? Infinity) <= PAD_KM);
+  const near = line.map((p) => nearRoute(route, p));
   const runs: LatLng[][] = [];
   let run: LatLng[] = [];
   for (let i = 0; i < line.length; i++) {
@@ -109,7 +155,7 @@ function clipLine(route: LatLng[], line: LatLng[]): LatLng[][] {
   return runs;
 }
 
-function toFeature(route: LatLng[], kind: NavKind, label: string, f: any, padKm = PAD_KM): NavFeature | null {
+function toFeature(route: LatLng[], kind: NavKind, label: string, f: any): NavFeature | null {
   const a: Record<string, unknown> = f.attributes ?? {};
   const g = f.geometry ?? {};
   const categoryKey = Object.keys(a).find((k) => k.startsWith('Category_of_'));
@@ -125,7 +171,7 @@ function toFeature(route: LatLng[], kind: NavKind, label: string, f: any, padKm 
     base.clearanceFt = num(a, 'Vertical_Clearance') ?? num(a, 'Vertical_Clearance_Closed');
     base.widthFt = num(a, 'Horizontal_Clearance');
   }
-  const isNear = (p: LatLng) => (locateOnLine(route, p)?.offKm ?? Infinity) <= padKm;
+  const isNear = (p: LatLng) => nearRoute(route, p);
   if (typeof g.x === 'number') {
     const point: LatLng = [g.y, g.x];
     return isNear(point) ? { ...base, point } : null;
@@ -142,14 +188,24 @@ function toFeature(route: LatLng[], kind: NavKind, label: string, f: any, padKm 
 }
 
 async function fetchNav(r: Route): Promise<NavFeature[]> {
+  // Generous box: anything DOWNSTREAM_KM along the river is within that distance in a straight line.
+  const box = bbox(r.coords, Math.max(PAD_KM, UPSTREAM_KM, DOWNSTREAM_KM));
+  const [sailingLayer, ...rest] = LAYERS;
+  // The sailing line comes first: it defines how far the corridor runs up and down the river.
+  const sailing = (await queryLayer(sailingLayer.id, box)).flatMap((f: any) =>
+    ((f.geometry?.paths ?? []) as [number, number][][]).map((p) => p.map(([x, y]) => [y, x] as LatLng)),
+  );
+  const corridor = riverCorridor(r.coords, sailing);
   const out: NavFeature[] = [];
+  const lines = sailing.flatMap((l) => clipLine(corridor, l));
+  if (lines.length) out.push({ kind: 'sailing-line', category: sailingLayer.label, lines });
   // A few requests at a time, to be polite to the server.
-  for (let i = 0; i < LAYERS.length; i += 4) {
-    const batch = LAYERS.slice(i, i + 4);
-    const results = await Promise.all(batch.map((l) => queryLayer(l.id, bbox(r.coords, l.padKm ?? PAD_KM))));
+  for (let i = 0; i < rest.length; i += 4) {
+    const batch = rest.slice(i, i + 4);
+    const results = await Promise.all(batch.map((l) => queryLayer(l.id, box)));
     results.forEach((features, j) => {
       for (const f of features) {
-        const nf = toFeature(r.coords, batch[j].kind, batch[j].label, f, batch[j].padKm);
+        const nf = toFeature(corridor, batch[j].kind, batch[j].label, f);
         if (nf) out.push(nf);
       }
     });
