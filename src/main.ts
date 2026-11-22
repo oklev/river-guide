@@ -15,7 +15,7 @@ import { initOsmLayer, renderOsm } from './osmLayer';
 import { loadAllOsm } from './osm';
 import { finishInterruptedTracks, initTracks, renderTracks } from './tracks';
 import { initPhotos, renderPhotos } from './photos';
-import { saveFile } from './platform';
+import { initSystemBars, saveFile } from './platform';
 import { $, prefs } from './ui';
 
 initOsmLayer();
@@ -27,6 +27,7 @@ initShare();
 initPortages();
 initGauges();
 initNav();
+initSystemBars();
 
 // ---------- sidebar ----------
 $('toggle-sidebar').addEventListener('click', () => {

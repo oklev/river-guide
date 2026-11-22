@@ -1,7 +1,32 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core';
 
 /** True inside the Android app; false in a regular browser. */
 export const isNative = Capacitor.isNativePlatform();
+
+/**
+ * On newer Android WebViews the app is drawn edge-to-edge and the top bar's
+ * colour extends behind the status bar (see --safe-top in style.css). Make the
+ * clock/battery icons contrast with it: light icons on the dark teal bar, dark
+ * icons on the light teal bar used in dark mode.
+ */
+export function initSystemBars() {
+  if (!isNative) return;
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  let last = '';
+  const apply = () => {
+    const bar = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 0;
+    const edgeToEdge = bar > 53; // taller than the bar itself means it's padded for the status bar
+    const style = !edgeToEdge ? SystemBarsStyle.Default : dark.matches ? SystemBarsStyle.Light : SystemBarsStyle.Dark;
+    if (style === last) return;
+    last = style;
+    void SystemBars.setStyle({ style, bar: SystemBarType.StatusBar }).catch(() => {});
+  };
+  apply();
+  // Capacitor injects the inset values shortly after load; re-check on changes.
+  window.addEventListener('resize', apply);
+  dark.addEventListener('change', apply);
+  setTimeout(apply, 1000);
+}
 
 /**
  * Hand a generated file (GeoJSON, GPX…) to the user. Browsers download it;
