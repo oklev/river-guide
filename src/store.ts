@@ -16,22 +16,30 @@ interface Stores {
 }
 type StoreName = keyof Stores;
 
+/** Every object store and its key. Adding a store means adding it here and bumping DB_VERSION. */
+const STORES: Record<StoreName, string> = {
+  points: 'id',
+  routes: 'id',
+  osm: 'key',
+  tracks: 'id',
+  photos: 'id',
+  photoBlobs: 'id',
+  portages: 'id',
+  gauges: 'id',
+  nav: 'routeId',
+};
+const DB_VERSION = 7;
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
-function db(): Promise<IDBPDatabase> {
-  dbPromise ??= openDB(DB_NAME, 7, {
-    upgrade(database, oldVersion) {
-      if (oldVersion < 1) database.createObjectStore('points', { keyPath: 'id' });
-      if (oldVersion < 2) database.createObjectStore('routes', { keyPath: 'id' });
-      if (oldVersion < 3) database.createObjectStore('osm', { keyPath: 'key' });
-      if (oldVersion < 4) {
-        database.createObjectStore('tracks', { keyPath: 'id' });
-        database.createObjectStore('photos', { keyPath: 'id' });
-        database.createObjectStore('photoBlobs', { keyPath: 'id' });
+function open(version?: number): Promise<IDBPDatabase> {
+  return openDB(DB_NAME, version, {
+    // Create whatever is missing rather than going by version number, so a
+    // database that somehow ended up without a store gets repaired too.
+    upgrade(database) {
+      for (const [name, keyPath] of Object.entries(STORES)) {
+        if (!database.objectStoreNames.contains(name)) database.createObjectStore(name, { keyPath });
       }
-      if (oldVersion < 5) database.createObjectStore('portages', { keyPath: 'id' });
-      if (oldVersion < 6) database.createObjectStore('gauges', { keyPath: 'id' });
-      if (oldVersion < 7) database.createObjectStore('nav', { keyPath: 'routeId' });
     },
     // Another tab running an older version is holding the database open, so the
     // upgrade (and every read/write) waits. Say so instead of hanging silently.
@@ -47,6 +55,32 @@ function db(): Promise<IDBPDatabase> {
     terminated() {
       dbPromise = null;
     },
+  });
+}
+
+async function openChecked(): Promise<IDBPDatabase> {
+  let d: IDBPDatabase;
+  try {
+    d = await open(DB_VERSION);
+  } catch (err) {
+    // Stored at a higher version than this code knows (e.g. after a repair): open as-is.
+    if ((err as DOMException).name !== 'VersionError') throw err;
+    d = await open();
+  }
+  const missing = Object.keys(STORES).filter((n) => !d.objectStoreNames.contains(n));
+  if (missing.length) {
+    console.warn(`River Guide: database v${d.version} is missing ${missing.join(', ')}; repairing.`);
+    const next = d.version + 1;
+    d.close();
+    d = await open(next);
+  }
+  return d;
+}
+
+function db(): Promise<IDBPDatabase> {
+  dbPromise ??= openChecked().catch((err) => {
+    dbPromise = null; // let the next call try again
+    throw err;
   });
   return dbPromise;
 }
