@@ -75,8 +75,9 @@ function trackStats(t: Track) {
 
 function caption(p: Photo, points: Map<string, RiverPoint>): { title: string; text: string } {
   const pt = p.pointId ? points.get(p.pointId) : undefined;
-  if (!pt) return { title: p.panorama ? 'Panorama' : 'Photo', text: '' };
-  return { title: pt.name, text: pt.description ?? '' };
+  const by = p.credit ? `Photo by ${p.credit}` : '';
+  if (!pt) return { title: p.panorama ? 'Panorama' : 'Photo', text: by };
+  return { title: pt.name, text: [pt.description, by].filter(Boolean).join(' · ') };
 }
 
 export interface ReportSource {

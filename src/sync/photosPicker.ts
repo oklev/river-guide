@@ -1,7 +1,10 @@
 import L from 'leaflet';
 import { map } from '../map';
-import { importFiles, toast } from '../photos';
-import { $ } from '../ui';
+import { cameraName, importFiles, toast } from '../photos';
+import { state } from '../state';
+import type { Photo } from '../types';
+import { classify, type PickedItem, type TripWindow } from './pickerMatch';
+import { $, escapeHtml, prefs } from '../ui';
 import { googleConfigured, SCOPES } from './config';
 import { getToken, openExternal } from './googleAuth';
 import { isNative } from '../platform';
@@ -34,7 +37,37 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** "5s" -> 5000 */
 const dur = (s: string | undefined, fallback: number) => (s ? Math.round(parseFloat(s) * 1000) : fallback);
 
-async function pickAndImport(win: Window | null) {
+// ---------- who took it ----------
+const CREDITS_KEY = 'cameraCredits';
+function loadCredits(): Record<string, string> {
+  try {
+    return JSON.parse(prefs.get(CREDITS_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** Ask once per new camera who it belongs to ("" = you); remembered for next time. */
+function creditsFor(cameras: Map<string, number>): Record<string, string> {
+  const known = loadCredits();
+  for (const [camera, n] of cameras) {
+    if (camera in known) continue;
+    const answer = prompt(
+      `${n} photo${n === 1 ? '' : 's'} came from a ${camera}. Who took ${n === 1 ? 'it' : 'them'}?\n` +
+        'Leave empty if this is your phone. (River Guide remembers this camera.)',
+      '',
+    );
+    if (answer === null) continue; // cancelled: ask again next time
+    known[camera] = answer.trim();
+  }
+  prefs.set(CREDITS_KEY, JSON.stringify(known));
+  return known;
+}
+
+const cameraOf = (m: PickedItem) =>
+  cameraName(m.mediaFile.mediaFileMetadata?.cameraMake, m.mediaFile.mediaFileMetadata?.cameraModel);
+
+async function pickAndImport(win: Window | null, trip?: TripWindow) {
   // From a click: may show Google's sign-in/consent for the Photos permission.
   const token = await getToken([SCOPES.photosPicker], true);
   const session = await api('sessions', token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -43,14 +76,21 @@ async function pickAndImport(win: Window | null) {
   let opened = false;
   if (isNative) {
     // The app's WebView can't open windows: hand the link to Android (opens Google Photos).
-    opened = await openExternal(url).then(() => true, () => false);
+    opened = await openExternal(url).then(
+      () => true,
+      () => false,
+    );
   } else if (win && !win.closed) {
     win.location.href = url;
     opened = true;
   }
+  const fmt = (t: number) => new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const hint = trip
+    ? `Pick freely: only photos taken during ${trip.label} (${fmt(trip.start)}) are kept, and ones already in River Guide are skipped.`
+    : 'Pick freely: photos already in River Guide are skipped.';
   // If nothing could be opened automatically, a tap on this link always works.
   toast(
-    `${opened ? 'Choose photos in Google Photos, then come back here…' : 'Open Google Photos to choose photos:'} ` +
+    `${opened ? 'Choose photos in Google Photos, then come back here.' : 'Open Google Photos to choose photos.'} ${escapeHtml(hint)} ` +
       `<a class="link" href="${url}" target="_blank" rel="noopener">${opened ? 'Reopen' : 'Open Google Photos'}</a>`,
     10 * 60_000,
   );
@@ -67,55 +107,79 @@ async function pickAndImport(win: Window | null) {
     s = await api(`sessions/${session.id}`, token);
   }
 
-  // List and download what was picked.
-  const items: any[] = [];
+  // List what was picked, and work out what's actually new before downloading anything.
+  const items: PickedItem[] = [];
   let page = '';
   do {
     const r = await api(`mediaItems?sessionId=${session.id}&pageSize=100${page ? `&pageToken=${page}` : ''}`, token);
     items.push(...(r.mediaItems ?? []));
     page = r.nextPageToken ?? '';
   } while (page);
-  const photos = items.filter((m) => m.type !== 'VIDEO' && m.mediaFile?.baseUrl);
-  toast(`Importing ${photos.length} photo${photos.length === 1 ? '' : 's'} from Google Photos…`, 60_000);
+  const { fresh, duplicates, outside, videos } = classify(items, state.photos, trip);
+
+  const cameras = new Map<string, number>();
+  for (const m of fresh) {
+    const c = cameraOf(m);
+    if (c) cameras.set(c, (cameras.get(c) ?? 0) + 1);
+  }
+  const credits = cameras.size ? creditsFor(cameras) : {};
+
+  if (fresh.length) toast(`Importing ${fresh.length} photo${fresh.length === 1 ? '' : 's'} from Google Photos…`, 60_000);
   const files: File[] = [];
-  for (const m of photos) {
+  const extras = new Map<File, Partial<Photo>>();
+  for (const m of fresh) {
     // "=d" downloads the original (with its date/time; Google strips GPS).
     const res = await fetch(`${m.mediaFile.baseUrl}=d`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) continue;
-    files.push(
-      new File([await res.blob()], m.mediaFile.filename ?? `${m.id}.jpg`, {
-        type: m.mediaFile.mimeType ?? 'image/jpeg',
-        lastModified: Date.parse(m.createTime) || Date.now(),
-      }),
-    );
+    const file = new File([await res.blob()], m.mediaFile.filename ?? `${m.id}.jpg`, {
+      type: m.mediaFile.mimeType ?? 'image/jpeg',
+      lastModified: Date.parse(m.createTime) || Date.now(),
+    });
+    const camera = cameraOf(m);
+    const credit = camera ? credits[camera] : undefined;
+    extras.set(file, { googleId: m.id, ...(camera ? { camera } : {}), ...(credit ? { credit } : {}) });
+    files.push(file);
   }
   await api(`sessions/${session.id}`, token, { method: 'DELETE' }).catch(() => {});
 
-  const added = await importFiles(files);
+  const added = await importFiles(files, { extras });
   const located = added.filter((p) => p.lat != null);
-  toast(
-    `Imported ${added.length} photo${added.length === 1 ? '' : 's'}: ${located.length} matched to a track, ` +
-      `${added.length - located.length} to place by hand. <button class="link" data-open-review>Review</button>`,
-    15_000,
-  );
+  const parts = [
+    `Imported ${added.length} photo${added.length === 1 ? '' : 's'}`,
+    added.length > 0 && `${located.length} matched to a track, ${added.length - located.length} to place by hand`,
+    duplicates > 0 && `${duplicates} already in River Guide`,
+    outside > 0 && `${outside} not from this trip`,
+    videos > 0 && `${videos} video${videos === 1 ? '' : 's'} skipped`,
+  ].filter(Boolean);
+  toast(`${parts.join(' · ')}.${added.length ? ' <button class="link" data-open-review>Review</button>' : ''}`, 15_000);
   if (located.length) map.fitBounds(L.latLngBounds(located.map((p) => L.latLng(p.lat!, p.lng!))), { padding: [60, 60], maxZoom: 16 });
+}
+
+let busy = false;
+/**
+ * Open the picker and import. With a trip, only photos taken during it are
+ * kept. Call straight from a tap (browsers only allow new windows then).
+ */
+export function importFromGooglePhotos(trip?: TripWindow) {
+  if (busy) return;
+  busy = true;
+  const btn = $<HTMLButtonElement>('import-google-photos');
+  btn.disabled = true;
+  // Open the window now and point it at Google's picker once the session exists.
+  const win = isNative ? null : window.open('about:blank', '_blank');
+  void pickAndImport(win, trip)
+    .catch((err) => {
+      win?.close();
+      alert(`Couldn't import from Google Photos: ${(err as Error).message}`);
+    })
+    .finally(() => {
+      busy = false;
+      btn.disabled = false;
+    });
 }
 
 export function initPhotosPicker() {
   const btn = $<HTMLButtonElement>('import-google-photos');
   btn.hidden = !googleConfigured();
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    // Browsers only allow new windows straight from a tap, so open it now and point it
-    // at Google's picker once the session exists.
-    const win = isNative ? null : window.open('about:blank', '_blank');
-    try {
-      await pickAndImport(win);
-    } catch (err) {
-      win?.close();
-      alert(`Couldn't import from Google Photos: ${(err as Error).message}`);
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  btn.addEventListener('click', () => importFromGooglePhotos());
 }

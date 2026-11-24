@@ -175,6 +175,12 @@ export interface Photo extends Revisioned {
   matchGapSec?: number;
   /** Wide image (2:1 or more), shown scrollable in the viewer. */
   panorama?: boolean;
+  /** Camera that took it, e.g. "Google Pixel 8" (from EXIF or Google Photos). */
+  camera?: string;
+  /** Who took it, when it wasn't you ("Sam"). */
+  credit?: string;
+  /** Google Photos media item ID, for photos imported from Google Photos. */
+  googleId?: string;
   createdAt: string;
 }
 

@@ -60,7 +60,10 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - Syncs when the app opens, about 10 s after a change, when you're back online, every 5 minutes while open, and with **Sync now**.
 - If two devices change the same item, the newer change wins. Deletions sync too (they're remembered for 90 days).
 - How it works: each device writes only its own `device-<id>.json` snapshot (so devices never overwrite each other) and reads everyone else's; photos are separate `photo-<id>.jpg` / `thumb-<id>.jpg` files uploaded once. The app only has access to files it creates (Drive's `drive.file` scope).
-- **From Google Photos** (Tracks tab) imports photos chosen in Google's photo picker. Google strips their GPS, so they're matched to a recorded track by time or placed by hand.
+- **From Google Photos** (Tracks tab) imports photos chosen in Google's photo picker. Google strips their GPS, so they're matched to a recorded track by time or placed by hand. Friends' photos from a shared album land in the right place as long as *you* recorded the track.
+  - Pick freely: photos already in River Guide are skipped before downloading (same Google Photos item, same file name, or same capture time).
+  - **Add Google Photos** on a track's popup keeps only photos taken during that trip (±20 min).
+  - Photos are credited by camera: the first time a new phone's photos arrive, River Guide asks who took them and remembers it (blank = you). Credits show on the photo and in trip reports.
 - Needs a Google Cloud project; see "Setting up Google sync" below.
 
 **Data & sharing**

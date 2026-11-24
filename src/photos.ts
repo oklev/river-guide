@@ -44,7 +44,15 @@ function exifTime(raw: unknown, offset: unknown): number | undefined {
   return new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime();
 }
 
-async function readMeta(file: File): Promise<{ takenAt?: number; lat?: number; lng?: number }> {
+/** "samsung" + "SM-S908U" -> "samsung SM-S908U"; avoids "Google Google Pixel 8". */
+export function cameraName(make?: unknown, model?: unknown): string | undefined {
+  const mk = typeof make === 'string' ? make.trim() : '';
+  const md = typeof model === 'string' ? model.trim() : '';
+  if (!md) return mk || undefined;
+  return mk && !md.toLowerCase().startsWith(mk.toLowerCase()) ? `${mk} ${md}` : md;
+}
+
+async function readMeta(file: File): Promise<{ takenAt?: number; lat?: number; lng?: number; camera?: string }> {
   try {
     const tags = await exifr.parse(file, { tiff: true, exif: true, gps: true, reviveValues: false });
     const takenAt = exifTime(tags?.DateTimeOriginal ?? tags?.CreateDate, tags?.OffsetTimeOriginal);
@@ -58,7 +66,7 @@ async function readMeta(file: File): Promise<{ takenAt?: number; lat?: number; l
     } catch {
       /* no GPS block */
     }
-    return { takenAt, lat, lng };
+    return { takenAt, lat, lng, camera: cameraName(tags?.Make, tags?.Model) };
   } catch {
     return {};
   }
@@ -103,6 +111,8 @@ interface ImportOptions {
   fix?: { lat: number; lng: number; time: number };
   /** Don't show an alert per failed file (the caller reports instead). */
   quiet?: boolean;
+  /** Extra fields for particular files (e.g. Google Photos ID, credit). */
+  extras?: Map<File, Partial<Photo>>;
 }
 
 /** Store photos as drafts, locating each from EXIF GPS, a GPS track, or a fresh fix. */
@@ -119,7 +129,9 @@ export async function importFiles(files: File[], opts: ImportOptions = {}): Prom
         ...(images.panorama ? { panorama: true } : {}),
         fileName: file.name,
         takenAt: meta.takenAt ?? (file.lastModified || undefined),
+        ...(meta.camera ? { camera: meta.camera } : {}),
         createdAt: new Date().toISOString(),
+        ...opts.extras?.get(file),
       };
       if (meta.lat != null && meta.lng != null) Object.assign(p, { lat: meta.lat, lng: meta.lng, locSource: 'exif' });
       else if (opts.fix && Math.abs((p.takenAt ?? Date.now()) - opts.fix.time) < FRESH_FIX_MS)
@@ -219,7 +231,8 @@ function locLabel(p: Photo): string {
       return 'No location yet';
   }
 }
-const describe = (p: Photo) => `${p.panorama ? 'Panorama · ' : ''}${fmtTime(p.takenAt)} · ${locLabel(p)}`;
+const describe = (p: Photo) =>
+  `${p.panorama ? 'Panorama · ' : ''}${p.credit ? `By ${p.credit} · ` : ''}${fmtTime(p.takenAt)} · ${locLabel(p)}`;
 
 // ---------- drafts on the map & review list ----------
 function draftPopup(p: Photo) {

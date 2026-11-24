@@ -10,6 +10,8 @@ import { createRoute } from './routes';
 import { closeSidebarOnMobile } from './points';
 import type { LatLng, Track, TrackFix } from './types';
 import { $, escapeHtml, fmtMi, getMode, prefs } from './ui';
+import { googleConfigured } from './sync/config';
+import { importFromGooglePhotos } from './sync/photosPicker';
 
 const TRACK_COLOR = '#e65100';
 /** Fixes less accurate than this are dropped (metres). */
@@ -43,6 +45,7 @@ function popupHtml(t: Track) {
       <button class="btn small" data-track-action="rename" data-id="${t.id}">Rename</button>
       <button class="btn small" data-track-action="route" data-id="${t.id}">Make route</button>
       <button class="btn small" data-track-action="report" data-id="${t.id}">Trip report</button>
+      ${googleConfigured() ? `<button class="btn small" data-track-action="gphotos" data-id="${t.id}">Add Google Photos</button>` : ''}
       <button class="btn small" data-track-action="gpx" data-id="${t.id}">Export GPX</button>
       <button class="btn small danger" data-track-action="delete" data-id="${t.id}">Delete</button>
     </div>
@@ -378,6 +381,13 @@ export function initTracks() {
         // ~15 m tolerance keeps river bends while dropping GPS jitter.
         await createRoute(simplify(fixesToLatLng(t.fixes), 15), t.name);
         return;
+      }
+      case 'gphotos': {
+        // Synchronous up to the picker window opening: browsers only allow it straight from a tap.
+        map.closePopup();
+        const times = t.fixes.map((f) => f[2]).filter((x) => x > 0);
+        if (!times.length) return alert('This track has no times, so its photos can’t be matched.');
+        return importFromGooglePhotos({ start: Math.min(...times), end: Math.max(...times), label: `“${t.name}”` });
       }
       case 'report': {
         if (t.recording) return alert('Stop recording first, then make the trip report.');
