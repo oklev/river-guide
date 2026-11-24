@@ -6,11 +6,11 @@
  */
 export const GOOGLE = {
   /** OAuth client ID of type "Web application". */
-  webClientId: '',
+  webClientId: '974912635659-58pkcvmld97m534m1nef1s03f3qfe0lu.apps.googleusercontent.com',
   /** API key restricted to the Google Picker API (used to choose shared trip folders). */
-  apiKey: '',
+  apiKey: 'AIzaSyCUloe17Ue9DTySnSBbTflk7ibBgQG17HQ',
   /** Project number, shown on the Cloud console dashboard (used by the Picker). */
-  projectNumber: '',
+  projectNumber: '974912635659',
 };
 
 export const SCOPES = {
