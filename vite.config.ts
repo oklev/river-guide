@@ -33,6 +33,9 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // App shell only; map tiles are cached separately by src/tiles.ts.
         globPatterns: ['**/*.{js,css,html,svg,png}'],
+        // Links to the report viewer (view.html?id=...) and test page are their own pages:
+        // without this the service worker answered every navigation with the main app.
+        navigateFallbackDenylist: [/\/view\.html/, /\/sharetest\.html/],
       },
     }),
   ],
