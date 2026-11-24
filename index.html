@@ -315,7 +315,8 @@
             <label>Share with
               <input id="rep-share-emails" type="text" inputmode="email" autocomplete="off" placeholder="Email addresses, separated by commas" />
             </label>
-            <p class="muted small">Saved to "River Guide › Trip reports" in your Drive. Google emails each person a link that opens the report in their browser (they sign in with that Google account).</p>
+            <label class="check-row"><input id="rep-share-anyone" type="checkbox" /> Anyone with the link can view it (no sign-in needed)</label>
+            <p class="muted small">Saved to "River Guide › Trip reports" in your Drive. Google emails each person a link that opens the report in their browser (they sign in with that Google account, unless anyone can view it).</p>
             <div class="footer-row"><button type="button" id="rep-drive" class="btn small">Save to Google Drive</button></div>
             <div id="rep-share-result" class="small" hidden>
               <a id="rep-share-link" target="_blank" rel="noopener">Open the shared report</a> ·
@@ -383,6 +384,7 @@
             <label>Share with
               <input id="share-emails" type="text" inputmode="email" autocomplete="off" placeholder="Email addresses, separated by commas" />
             </label>
+            <label class="check-row"><input id="share-anyone" type="checkbox" /> Anyone with the link can import it (no sign-in needed)</label>
             <p class="muted small">Saved to "River Guide › Shared routes" in your Drive. Google emails each person a link; opening it imports the route into their River Guide (in the browser, or the Android app).</p>
             <div class="footer-row"><button type="button" id="share-drive" class="btn small">Save to Google Drive</button></div>
             <div id="share-drive-result" class="small" hidden>

@@ -52,6 +52,24 @@ async function download(id: string, token: string): Promise<{ ok: true; blob: Bl
   return { ok: true, blob: await res.blob(), name };
 }
 
+/**
+ * A file shared as "anyone with the link" can be read with the project's API
+ * key, no sign-in needed. Returns null if it isn't public (or the key can't
+ * be used for Drive).
+ */
+export async function openPublicFile(id: string): Promise<{ blob: Blob; name?: string } | null> {
+  if (!GOOGLE.apiKey) return null;
+  try {
+    const key = encodeURIComponent(GOOGLE.apiKey);
+    const res = await fetch(`${API}/files/${encodeURIComponent(id)}?alt=media&key=${key}`);
+    if (!res.ok) return null;
+    const meta = await fetch(`${API}/files/${encodeURIComponent(id)}?fields=name&key=${key}`);
+    return { blob: await res.blob(), name: meta.ok ? (await meta.json()).name : undefined };
+  } catch {
+    return null;
+  }
+}
+
 export class NotShared extends Error {
   constructor() {
     super("This wasn't shared with the Google account you signed in with, or it was deleted.");

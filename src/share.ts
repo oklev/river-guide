@@ -253,6 +253,7 @@ async function shareToDrive() {
       data: blob,
       type: 'application/zip',
       emails,
+      anyone: $<HTMLInputElement>('share-anyone').checked,
       link: (id) => `${WEB_APP_URL}?import=${encodeURIComponent(id)}`,
       subject: `River Guide route: ${r.name}`,
       onStep: step,
@@ -261,8 +262,10 @@ async function shareToDrive() {
     $('share-drive-result').hidden = false;
     step(
       emails.length
-        ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.`
-        : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.',
+        ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.${$<HTMLInputElement>('share-anyone').checked ? ' Anyone else with the link can open it too.' : ''}`
+        : $<HTMLInputElement>('share-anyone').checked
+          ? 'Saved to Google Drive. Anyone with the link can open it: copy the link below and send it however you like.'
+          : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.',
     );
   } catch (err) {
     step(`Couldn't save to Google Drive: ${(err as Error).message}`);

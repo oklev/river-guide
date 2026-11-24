@@ -1,4 +1,4 @@
-import { openSharedFile } from './sync/driveOpen';
+import { openPublicFile, openSharedFile } from './sync/driveOpen';
 
 /**
  * view.html: opens a trip report someone shared through Google Drive.
@@ -52,4 +52,12 @@ if (!id) {
 } else {
   // Opening needs a tap: browsers only allow Google's sign-in window from one.
   $('open').addEventListener('click', () => void open(id));
+  // Shared with anyone who has the link? Then it opens straight away, no sign-in.
+  $('open').hidden = true;
+  status('Opening…');
+  void openPublicFile(id).then(async (file) => {
+    if (file) return show(await file.blob.text(), file.name);
+    status('');
+    $('open').hidden = false;
+  });
 }

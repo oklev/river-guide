@@ -197,6 +197,7 @@ async function saveToDrive() {
       data: new Blob([html], { type: 'text/html' }),
       type: 'text/html',
       emails,
+      anyone: $<HTMLInputElement>('rep-share-anyone').checked,
       link: (id) => `${REPORT_VIEWER_URL}?id=${encodeURIComponent(id)}`,
       subject: `Trip report: ${opts.title}`,
       onStep: step,
@@ -205,8 +206,10 @@ async function saveToDrive() {
     $('rep-share-result').hidden = false;
     step(
       emails.length
-        ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.`
-        : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.',
+        ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.${$<HTMLInputElement>('rep-share-anyone').checked ? ' Anyone else with the link can open it too.' : ''}`
+        : $<HTMLInputElement>('rep-share-anyone').checked
+          ? 'Saved to Google Drive. Anyone with the link can open it: copy the link below and send it however you like.'
+          : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.',
     );
   } catch (err) {
     step(`Couldn't save to Google Drive: ${(err as Error).message}`);

@@ -2,7 +2,7 @@ import { importFile } from '../share';
 import { isNative } from '../platform';
 import { $ } from '../ui';
 import { googleConfigured } from './config';
-import { openSharedFile } from './driveOpen';
+import { openPublicFile, openSharedFile } from './driveOpen';
 import { onAppLink } from './googleAuth';
 
 /**
@@ -14,6 +14,9 @@ import { onAppLink } from './googleAuth';
  */
 const ANDROID_PACKAGE = 'io.github.oklev.riverguide';
 let pendingId: string | null = null;
+/** The file, if it's shared with anyone with the link (checked as soon as the prompt shows). */
+let publicFile: Promise<{ blob: Blob; name?: string } | null> = Promise.resolve(null);
+let publicResult: { blob: Blob; name?: string } | null | undefined;
 
 const dialog = () => $<HTMLDialogElement>('import-dialog');
 const step = (m: string) => ($('import-status').textContent = m);
@@ -29,6 +32,9 @@ function clearParam() {
 function ask(id: string) {
   pendingId = id;
   step('');
+  // Check now, not on the tap: Google's sign-in popup has to open straight from the tap.
+  publicResult = undefined;
+  publicFile = openPublicFile(id).then((f) => (publicResult = f));
   // In an Android browser, offer to open the app instead (falls back to this page if it isn't installed).
   const inAndroidBrowser = !isNative && /Android/i.test(navigator.userAgent);
   const inApp = $<HTMLAnchorElement>('import-in-app');
@@ -46,7 +52,11 @@ async function doImport() {
   const btn = $<HTMLButtonElement>('import-go');
   btn.disabled = true;
   try {
-    const file = await openSharedFile(id, step, 'Select the shared route to import it');
+    // Public links need no sign-in; otherwise sign in with the account it was shared with.
+    const file =
+      publicResult === undefined
+        ? ((await publicFile) ?? (await openSharedFile(id, step, 'Select the shared route to import it')))
+        : (publicResult ?? (await openSharedFile(id, step, 'Select the shared route to import it')));
     if (!file) return step('Cancelled.');
     step('Importing…');
     dialog().close();

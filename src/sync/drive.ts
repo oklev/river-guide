@@ -135,3 +135,12 @@ export async function shareWith(fileId: string, email: string, message: string):
     body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }),
   });
 }
+
+/** Anyone with the link can view the file (no Google sign-in needed; not listed or searchable). */
+export async function shareAnyone(fileId: string): Promise<void> {
+  await call(`${API}/files/${fileId}/permissions?fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'anyone', role: 'reader', allowFileDiscovery: false }),
+  });
+}

@@ -1,7 +1,7 @@
 import { prefs } from '../ui';
 import { SCOPES } from './config';
 import { getToken } from './googleAuth';
-import { findOrCreateChildFolder, findOrCreateFolder, shareWith, uploadLarge } from './drive';
+import { findOrCreateChildFolder, findOrCreateFolder, shareAnyone, shareWith, uploadLarge } from './drive';
 
 /**
  * Saving something to "River Guide › <folder>" in your Google Drive and
@@ -27,6 +27,8 @@ export async function saveAndShare(opts: {
   data: Blob;
   type: string;
   emails: string[];
+  /** Anyone with the link can view it, without signing in. */
+  anyone?: boolean;
   /** The link people get, from the new file's ID. */
   link: (id: string) => string;
   /** First line of Google's email, e.g. "Route: Downtown Chattanooga". */
@@ -39,6 +41,10 @@ export async function saveAndShare(opts: {
   const folder = await findOrCreateChildFolder(root, opts.folder);
   const id = await uploadLarge(opts.name, opts.data, opts.type, folder);
   const link = opts.link(id);
+  if (opts.anyone) {
+    step('Making it viewable by anyone with the link…');
+    await shareAnyone(id);
+  }
   for (const [i, email] of opts.emails.entries()) {
     step(`Sharing with ${email} (${i + 1} of ${opts.emails.length})…`);
     await shareWith(id, email, [opts.subject, '', `Open it here: ${link}`].join('\n'));
