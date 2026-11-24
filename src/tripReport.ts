@@ -14,7 +14,8 @@ import { reportHtml, type ReportData, type ReportItem } from './tripReportTempla
  * Photos and the map library are embedded; only background map tiles need
  * internet. Open it in any browser, or send it to someone.
  */
-const POINT_NEAR_KM = 0.3;
+/** With a GPS track, a point counts as visited if the track came this close (km). */
+const POINT_NEAR_KM = 0.3; // a big river can be 300 m wide: bank access points still count
 const ROUTE_POINT_NEAR_KM = 0.5;
 /** Photos taken this long before the first / after the last GPS fix still count. */
 const PHOTO_SLACK_MS = 20 * 60_000;
@@ -32,6 +33,9 @@ function blobToDataUrl(b: Blob): Promise<string> {
     r.readAsDataURL(b);
   });
 }
+
+/** Whether the track came within `km` of a place (works for tracks without times too). */
+const passedBy = (t: Track, p: LatLng, km: number) => t.fixes.some((f) => distKm(p, [f[0], f[1]]) <= km);
 
 /** Time the track passed closest to a place, if it came within `km`. */
 function timeAt(t: Track | undefined, p: LatLng, km: number): number | undefined {
@@ -232,9 +236,12 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
   };
 
   // Points along the way.
-  const points = o.points
-    ? state.points.filter((p) => nearAny(lines, [p.lat, p.lng], o.tracks.length ? POINT_NEAR_KM : ROUTE_POINT_NEAR_KM))
-    : [];
+  // With tracks: only points you actually passed (so they have a time). Without: the route's points by mile.
+  const points = !o.points
+    ? []
+    : o.tracks.length
+      ? state.points.filter((p) => o.tracks.some((t) => passedBy(t, [p.lat, p.lng], POINT_NEAR_KM)))
+      : state.points.filter((p) => nearAny(lines, [p.lat, p.lng], ROUTE_POINT_NEAR_KM));
   const pointById = new Map(state.points.map((p) => [p.id, p]));
   const wanted = new Set(o.photoIds);
   const photos = state.photos.filter((ph) => wanted.has(ph.id)).sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
