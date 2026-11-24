@@ -2,7 +2,7 @@ import L from 'leaflet';
 import { map } from './map';
 import { offlineAreas, state } from './state';
 import { del, put } from './store';
-import { KM_PER_MI, lengthKm, lengthMi, locateOnLine } from './geo';
+import { KM_PER_MI, lengthKm, lengthMi } from './geo';
 import { RouteEditor } from './routeEditor';
 import { cancelAddPoint, closeSidebarOnMobile } from './points';
 import {
@@ -22,7 +22,9 @@ import { openShare } from './share';
 import { detachFromRoute, portageMile, portagesOf } from './portages';
 import { fmtValue, gaugesNearRoute, refreshGauges, routeConditions } from './gauges';
 import { forgetNav, refreshNav } from './nav';
-import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route } from './types';
+import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route, type RouteFork } from './types';
+import { allLines, forkFromDrawing, locateOnRoute, MAIN, riverKm } from './routeGraph';
+import type { TileCoord } from './tiles';
 import { $, escapeHtml, fmtBytes, fmtMi, fmtWalk, getMode } from './ui';
 
 /** Above this, the download button is disabled; keeps a stray 50 km buffer from pulling gigabytes. */
@@ -31,6 +33,8 @@ const MAX_TILES = 20_000;
 const ALONG_KM = 0.5;
 
 const lines = new Map<string, L.Polyline>();
+/** Fork lines, keyed "routeId:forkId". */
+const forkLines = new Map<string, L.Polyline>();
 export const editor = new RouteEditor(map);
 const findRoute = (id: string) => state.routes.find((r) => r.id === id);
 
@@ -49,12 +53,14 @@ function conditionsHtml(r: Route): string {
 
 function popupHtml(r: Route): string {
   const pointRows = state.points
-    .map((p) => ({ p, loc: locateOnLine(r.coords, [p.lat, p.lng]) }))
+    .map((p) => ({ p, loc: locateOnRoute(r, [p.lat, p.lng]) }))
     .filter((x) => x.loc && x.loc.offKm <= ALONG_KM)
     .map(({ p, loc }) => {
       const c = CATEGORIES[p.category];
       const sev = p.severity ? ` <em class="sev-${p.severity}">${p.severity}</em>` : '';
-      return { mi: loc!.alongKm / KM_PER_MI, html: `<span style="color:${c.color}">${c.icon}</span> ${escapeHtml(p.name)}${sev}` };
+      const fork = loc!.branch !== MAIN ? r.forks?.find((f) => f.id === loc!.branch) : undefined;
+      const where = fork ? ` <small>· ${escapeHtml(fork.name || (fork.rejoin != null ? 'channel' : 'side branch'))}</small>` : '';
+      return { mi: riverKm(r, loc!) / KM_PER_MI, html: `<span style="color:${c.color}">${c.icon}</span> ${escapeHtml(p.name)}${sev}${where}` };
     });
   const pathRows = portagesOf(r.id).map((p) => {
     const k = PATH_KINDS[p.kind];
@@ -70,19 +76,111 @@ function popupHtml(r: Route): string {
   return `
     <div class="popup">
       <strong>${escapeHtml(r.name)}</strong>
-      <div class="popup-meta">${fmtMi(lengthMi(r.coords))} · ${escapeHtml(offlineLabel(r))}</div>
+      <div class="popup-meta">${fmtMi(lengthMi(r.coords))}${r.forks?.length ? ` · ${r.forks.length} fork${r.forks.length === 1 ? '' : 's'}` : ''} · ${escapeHtml(offlineLabel(r))}</div>
       ${conditionsHtml(r)}
       ${r.description ? `<p>${escapeHtml(r.description).replace(/\n/g, '<br>')}</p>` : ''}
       ${alongHtml}
       <div class="popup-actions">
         <button class="btn small" data-route-action="details" data-id="${r.id}">Edit</button>
         <button class="btn small" data-route-action="line" data-id="${r.id}">Edit line</button>
+        <button class="btn small" data-route-action="fork" data-id="${r.id}" title="Add a channel or side branch">+ Fork</button>
         <button class="btn small" data-route-action="reverse" data-id="${r.id}" title="Swap put-in and take-out">⇄</button>
         <button class="btn small" data-route-action="share" data-id="${r.id}">Share…</button>
         <button class="btn small" data-route-action="report" data-id="${r.id}">Trip report…</button>
         <button class="btn small primary" data-route-action="offline" data-id="${r.id}">Offline…</button>
       </div>
     </div>`;
+}
+
+function forkPopupHtml(r: Route, f: RouteFork): string {
+  const kind = f.rejoin != null ? 'Channel' : 'Side branch';
+  const miles =
+    f.rejoin != null
+      ? `rejoins at mile ${(f.rejoin / KM_PER_MI).toFixed(1)}`
+      : `ends ${fmtMi(lengthMi(f.coords))} up the branch`;
+  return `<div class="popup">
+    <strong>${escapeHtml(f.name || kind)}</strong>
+    <div class="popup-meta">${kind} of “${escapeHtml(r.name)}” · leaves at mile ${(f.from / KM_PER_MI).toFixed(1)}, ${miles} · ${fmtMi(lengthMi(f.coords))}</div>
+    <div class="popup-actions">
+      <button class="btn small" data-fork-action="rename" data-id="${r.id}" data-fork="${f.id}">Rename</button>
+      <button class="btn small" data-fork-action="line" data-id="${r.id}" data-fork="${f.id}">Edit line</button>
+      <button class="btn small danger" data-fork-action="delete" data-id="${r.id}" data-fork="${f.id}">Delete fork</button>
+      <button class="btn small" data-route-action="open" data-id="${r.id}">Route…</button>
+    </div></div>`;
+}
+
+function upsertForks(r: Route) {
+  const keep = new Set<string>();
+  for (const f of r.forks ?? []) {
+    const key = `${r.id}:${f.id}`;
+    keep.add(key);
+    let line = forkLines.get(key);
+    if (!line) {
+      line = L.polyline([], { weight: 4, opacity: 0.85 });
+      line.on('click', (e: L.LeafletMouseEvent) => {
+        if (getMode() !== 'idle') return;
+        const route = findRoute(r.id);
+        const fork = route?.forks?.find((x) => x.id === f.id);
+        if (route && fork) L.popup({ maxWidth: 320 }).setLatLng(e.latlng).setContent(forkPopupHtml(route, fork)).openOn(map);
+      });
+      forkLines.set(key, line);
+    }
+    line.setLatLngs(f.coords).setStyle({ color: r.color }).addTo(map);
+  }
+  for (const [key, line] of forkLines) {
+    if (key.startsWith(`${r.id}:`) && !keep.has(key)) {
+      line.remove();
+      forkLines.delete(key);
+    }
+  }
+}
+
+/** After the main line changes, re-attach forks where their ends now meet it. */
+function resnapForks(r: Route) {
+  r.forks = (r.forks ?? []).flatMap((f) => {
+    const redone = forkFromDrawing(r, f.coords, f.id, f.name);
+    if (typeof redone !== 'string') {
+      // A channel drawn the other way round after a reversal: flip it so it runs downstream.
+      if (redone.rejoin != null && redone.rejoin < redone.from) {
+        const flipped = forkFromDrawing(r, [...f.coords].reverse(), f.id, f.name);
+        return typeof flipped === 'string' ? [redone] : [flipped];
+      }
+      return [redone];
+    }
+    // Its start no longer meets the line: maybe the other end does (after a reversal).
+    const flipped = forkFromDrawing(r, [...f.coords].reverse(), f.id, f.name);
+    return typeof flipped === 'string' ? [] : [flipped];
+  });
+}
+
+function drawFork(r: Route, fork?: RouteFork) {
+  cancelAddPoint();
+  map.closePopup();
+  closeSidebarOnMobile();
+  editor.start(
+    fork?.coords ?? [],
+    r.color,
+    async (coords) => {
+      if (!coords) return renderRoutes();
+      const id = fork?.id ?? crypto.randomUUID();
+      const made = forkFromDrawing(r, coords, id, fork?.name);
+      if (typeof made === 'string') {
+        alert(made);
+        return renderRoutes();
+      }
+      if (!fork) {
+        const name = prompt(`Name this ${made.rejoin != null ? 'channel' : 'side branch'} (optional)`, '')?.trim();
+        if (name) made.name = name;
+      }
+      r.forks = [...(r.forks ?? []).filter((x) => x.id !== id), made];
+      if (r.offline) r.offline.stale = true;
+      await saveRoute(r);
+    },
+    {
+      hint: 'Start on the route line and tap along the fork. End back on the route for a channel that rejoins, or anywhere for a side branch.',
+      format: (km) => fmtMi(km / KM_PER_MI),
+    },
+  );
 }
 
 function upsertLine(r: Route) {
@@ -96,6 +194,7 @@ function upsertLine(r: Route) {
     lines.set(r.id, line);
   }
   line.setLatLngs(r.coords).setStyle({ color: r.color }).addTo(map);
+  upsertForks(r);
 }
 
 export function renderRoutes() {
@@ -104,6 +203,12 @@ export function renderRoutes() {
     if (!findRoute(id)) {
       line.remove();
       lines.delete(id);
+    }
+  }
+  for (const [key, line] of forkLines) {
+    if (!findRoute(key.split(':')[0])) {
+      line.remove();
+      forkLines.delete(key);
     }
   }
   $('route-list').innerHTML = state.routes.length
@@ -177,6 +282,7 @@ function editLine(r: Route) {
   editor.start(r.coords, r.color, async (coords) => {
     if (coords) {
       r.coords = coords;
+      resnapForks(r);
       if (r.offline) r.offline.stale = true;
       await saveRoute(r);
       void refreshGauges();
@@ -278,14 +384,21 @@ const osmCheckbox = $<HTMLInputElement>('offline-osm');
 const progressBar = $<HTMLProgressElement>('offline-progress');
 const startBtn = $<HTMLButtonElement>('offline-start');
 let offlineRoute: Route | null = null;
+/** Lines to download: the route and its forks, or just a trip's section. */
+let offlineLines: LatLng[][] = [];
 let abort: AbortController | null = null;
 
-function plannedTiles(r: Route) {
-  return corridorTiles(r.coords, Number(bufferSelect.value), OFFLINE_MIN_ZOOM, Number(zoomSelect.value));
+function plannedTiles(_r: Route) {
+  const urls = new Set<string>();
+  for (const line of offlineLines) for (const u of corridorTiles(line, Number(bufferSelect.value), OFFLINE_MIN_ZOOM, Number(zoomSelect.value))) urls.add(u);
+  return [...urls];
 }
 
-function plannedOsm(r: Route) {
-  return osmCheckbox.checked ? corridorTileCoords(r.coords, Number(bufferSelect.value), OSM_ZOOM, OSM_ZOOM) : [];
+function plannedOsm(_r: Route) {
+  if (!osmCheckbox.checked) return [];
+  const seen = new Map<string, TileCoord>();
+  for (const line of offlineLines) for (const t of corridorTileCoords(line, Number(bufferSelect.value), OSM_ZOOM, OSM_ZOOM)) seen.set(`${t.z}/${t.x}/${t.y}`, t);
+  return [...seen.values()];
 }
 
 /** Rough average size of an OpenFreeMap z14 tile. */
@@ -303,10 +416,12 @@ function updateEstimate() {
   startBtn.disabled = tooMany;
 }
 
-function openOffline(r: Route) {
+/** Offline download for a route (and its forks), or with `section` just that part of it. */
+export function openOffline(r: Route, section?: { coords: LatLng[]; label: string }) {
   offlineRoute = r;
+  offlineLines = section ? [section.coords] : allLines(r);
   map.closePopup();
-  $('offline-title').textContent = `Save “${r.name}” for offline`;
+  $('offline-title').textContent = section ? `Save ${section.label} for offline` : `Save “${r.name}” for offline`;
   bufferSelect.value = String(r.offline?.bufferKm ?? DEFAULT_BUFFER_KM);
   $('offline-delete').hidden = !r.offline;
   zoomSelect.value = String(r.offline?.maxZoom ?? USGS_MAX_ZOOM);
@@ -373,25 +488,27 @@ async function runDownload() {
       }
       renderOsm(await loadAllOsm());
     }
-    const area: OfflineArea = {
-      coords: r.coords,
+    // One area per line (main line and each fork, or the trip section).
+    const newAreas: OfflineArea[] = offlineLines.map((coords) => ({
+      coords,
       bufferKm: Number(bufferSelect.value),
       maxZoom: Number(zoomSelect.value),
       osm: osmTiles.length > 0,
-    };
-    const sameArea = (a: OfflineArea) => JSON.stringify(a) === JSON.stringify(area);
+    }));
+    const area = newAreas[0];
+    const sameArea = (a: OfflineArea) => newAreas.some((n) => JSON.stringify(a) === JSON.stringify(n));
     if (controller.signal.aborted) {
       // Track the partial area so "Delete offline data" can still clean it up.
       r.offline = r.offline
-        ? { ...r.offline, areas: [...offlineAreas(r).filter((a) => !sameArea(a)), area] }
-        : { areas: [area], bufferKm: area.bufferKm, maxZoom: area.maxZoom, tiles: 0, failed: 0, partial: true, downloadedAt: new Date().toISOString() };
+        ? { ...r.offline, areas: [...offlineAreas(r).filter((a) => !sameArea(a)), ...newAreas] }
+        : { areas: newAreas, bufferKm: area.bufferKm, maxZoom: area.maxZoom, tiles: 0, failed: 0, partial: true, downloadedAt: new Date().toISOString() };
       await saveRoute(r);
       rerenderOsm();
       status('Download cancelled. Everything saved so far is kept.');
       return;
     }
     r.offline = {
-      areas: [...offlineAreas(r).filter((a) => !sameArea(a)), area],
+      areas: [...offlineAreas(r).filter((a) => !sameArea(a)), ...newAreas],
       bufferKm: area.bufferKm,
       maxZoom: area.maxZoom,
       tiles: tiles.total,
@@ -446,11 +563,39 @@ export function initRoutes() {
     closeSidebarOnMobile();
   });
 
+  // Fork popups: rename, redraw, delete.
+  map.getContainer().addEventListener('click', async (e) => {
+    const fb = (e.target as HTMLElement).closest<HTMLElement>('[data-fork-action]');
+    if (!fb) return;
+    const r = findRoute(fb.dataset.id ?? '');
+    const f = r?.forks?.find((x) => x.id === fb.dataset.fork);
+    if (!r || !f) return;
+    map.closePopup();
+    switch (fb.dataset.forkAction) {
+      case 'rename': {
+        const name = prompt('Fork name', f.name ?? '');
+        if (name === null) return;
+        f.name = name.trim() || undefined;
+        return saveRoute(r);
+      }
+      case 'line':
+        return drawFork(r, f);
+      case 'delete':
+        if (!confirm(`Delete the fork “${f.name || 'unnamed'}”? The rest of the route is kept.`)) return;
+        r.forks = r.forks!.filter((x) => x.id !== f.id);
+        return saveRoute(r);
+    }
+  });
+
   map.getContainer().addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-route-action]');
     const r = btn?.dataset.id ? findRoute(btn.dataset.id) : undefined;
     if (!btn || !r) return;
     switch (btn.dataset.routeAction) {
+      case 'fork':
+        return drawFork(r);
+      case 'open':
+        return focusRoute(r);
       case 'details':
         return openDetails(r, false);
       case 'line':
@@ -466,6 +611,7 @@ export function initRoutes() {
         return openOffline(r);
       case 'reverse':
         r.coords = [...r.coords].reverse();
+        resnapForks(r);
         await saveRoute(r);
         map.closePopup();
         return focusRoute(r);

@@ -103,8 +103,24 @@ export interface Route extends Revisioned {
   gaugeId?: string;
   /** Runnable ranges on that gauge. */
   levels?: RouteLevels;
+  /** Channels and side branches off the main line (see routeGraph.ts). */
+  forks?: RouteFork[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A fork off a route's main line: it leaves at `from` km along the main line
+ * and either rejoins it at `rejoin` km (a channel, e.g. around an island) or
+ * ends on its own (a side branch, e.g. up a tributary). Its coords start (and,
+ * for a channel, end) on the main line.
+ */
+export interface RouteFork {
+  id: string;
+  name?: string;
+  coords: LatLng[];
+  from: number;
+  rejoin?: number;
 }
 
 /** A feature extracted from OpenStreetMap vector tiles (via OpenFreeMap). */

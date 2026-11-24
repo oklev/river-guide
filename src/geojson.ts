@@ -7,6 +7,7 @@ import {
   type Portage,
   type RiverPoint,
   type Route,
+  type RouteFork,
   type Severity,
   type Track,
   type TrackFix,
@@ -49,6 +50,21 @@ export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[]
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** A route's forks from a file, keeping only well-formed ones. */
+function sanitizeForks(raw: unknown): RouteFork[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const forks = raw.flatMap((f: any): RouteFork[] => {
+    if (!f || typeof f.id !== 'string' || !isNum(f.from) || !Array.isArray(f.coords)) return [];
+    const coords = (f.coords as unknown[])
+      .filter((c): c is [number, number] => Array.isArray(c) && isNum(c[0]) && isNum(c[1]))
+      .slice(0, 5000)
+      .map(([a, b]) => [a, b] as LatLng);
+    if (coords.length < 2) return [];
+    return [{ id: f.id.slice(0, 80), name: typeof f.name === 'string' ? f.name.slice(0, 120) : undefined, coords, from: f.from, rejoin: isNum(f.rejoin) ? f.rejoin : undefined }];
+  });
+  return forks.length ? forks : undefined;
+}
 
 /** A point's line/area from a file, if it's well-formed. */
 function sanitizeShape(raw: any): RiverPoint['shape'] {
@@ -143,6 +159,7 @@ export function fromGeoJSON(data: unknown): ParsedData {
           description: String(p.description ?? ''),
           color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : ROUTE_COLORS[out.routes.length % ROUTE_COLORS.length],
           coords,
+          forks: sanitizeForks(p.forks),
         });
       }
     }
