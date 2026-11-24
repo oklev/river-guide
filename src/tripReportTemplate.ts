@@ -282,15 +282,15 @@ const SCRIPT = `
       var lo = speedRange ? speedRange[0] : 0, hi = speedRange ? speedRange[1] : 0;
       var color = stopped ? STOP_COLOR : rampColor(hi - lo < 0.1 ? 0.5 : (x.mph - lo) / (hi - lo));
       var pts = s.ll.slice(x.a, x.b + 1);
-      var halo = L.polyline(pts, { color: '#1b262c', weight: 7.5, opacity: 0.85, interactive: false }).addTo(map); // dark outline
-      var line = L.polyline(pts, { color: color, weight: 4.5, opacity: 1, interactive: false }).addTo(map);
+      // Round joins and caps let neighbouring sections flow into each other.
+      var line = L.polyline(pts, { color: color, weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
       // A wide invisible copy makes the section easy to hover.
       var hit = L.polyline(pts, { weight: 22, opacity: 0 }).addTo(map);
       var label = (stopped ? 'Stopped' : x.mph.toFixed(1) + ' mph') + ' · ' + fmtDur(x.ms) +
         (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(s.pts[x.a][2]) + '–' + fmtTime(s.pts[x.b][2]);
       hit.bindTooltip(label, { sticky: true, direction: 'top', offset: [0, -10] });
-      hit.on('mouseover', function () { line.setStyle({ weight: 7 }); halo.setStyle({ weight: 10 }); });
-      hit.on('mouseout', function () { line.setStyle({ weight: 4.5 }); halo.setStyle({ weight: 7.5 }); });
+      hit.on('mouseover', function () { line.setStyle({ weight: 8 }); });
+      hit.on('mouseout', function () { line.setStyle({ weight: 5 }); });
       pieces.push({ seg: s, line: line, hit: hit });
     });
   });
