@@ -22,7 +22,7 @@ const LAND_POINT_NEAR_KM = 0.05;
 /** Without map data, these categories are assumed to be in the river. */
 const WATER_CATEGORIES = new Set(['hazard', 'rapid']);
 /** Points of interest count from 300 m wherever they are: seeing them from the water is the point. */
-const SEEN_FROM_WATER = new Set(['poi']);
+const SEEN_FROM_WATER = new Set(['poi', 'island', 'bridge']);
 const ROUTE_POINT_NEAR_KM = 0.5;
 /** Photos taken this long before the first / after the last GPS fix still count. */
 const PHOTO_SLACK_MS = 20 * 60_000;
@@ -43,6 +43,19 @@ function blobToDataUrl(b: Blob): Promise<string> {
 
 /** Whether the track came within `km` of a place (works for tracks without times too). */
 const passedBy = (t: Track, p: LatLng, km: number) => t.fixes.some((f) => distKm(p, [f[0], f[1]]) <= km);
+
+/** Whether the track came within `km` of a point, measuring to its line or outline if it has one. */
+function passedPoint(t: Track, p: RiverPoint, km: number): boolean {
+  if (!p.shape) return passedBy(t, [p.lat, p.lng], km);
+  const line = p.shape.kind === 'area' ? [...p.shape.coords, p.shape.coords[0]] : p.shape.coords;
+  // Sample the track (long tracks) and measure each fix to the nearest part of the shape.
+  const step = Math.max(1, Math.floor(t.fixes.length / 1500));
+  for (let i = 0; i < t.fixes.length; i += step) {
+    const off = locateOnLine(line, [t.fixes[i][0], t.fixes[i][1]])?.offKm ?? Infinity;
+    if (off <= km) return true;
+  }
+  return false;
+}
 
 /** Time the track passed closest to a place, if it came within `km`. */
 function timeAt(t: Track | undefined, p: LatLng, km: number): number | undefined {
@@ -250,8 +263,8 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
   if (o.points && o.tracks.length) {
     for (const p of state.points) {
       const at: LatLng = [p.lat, p.lng];
-      if (!o.tracks.some((t) => passedBy(t, at, POINT_NEAR_KM))) continue;
-      if (o.tracks.some((t) => passedBy(t, at, LAND_POINT_NEAR_KM))) {
+      if (!o.tracks.some((t) => passedPoint(t, p, POINT_NEAR_KM))) continue;
+      if (o.tracks.some((t) => passedPoint(t, p, LAND_POINT_NEAR_KM))) {
         points.push(p);
         continue;
       }
@@ -296,6 +309,7 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
       time: timeNear([p.lat, p.lng]),
       mile: p.riverMile ?? mileOf([p.lat, p.lng]),
       at: [p.lat, p.lng],
+      shape: p.shape,
     });
   }
   const ordered = [...o.tracks].sort((a, b) => startOf(a) - startOf(b));

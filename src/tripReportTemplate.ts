@@ -11,6 +11,8 @@ export interface ReportItem {
   /** Index into ReportData.photos. */
   photo?: number;
   category?: string;
+  /** A point's line or area, drawn on the map in its colour. */
+  shape?: { kind: 'line' | 'area'; coords: LatLng[] };
   icon?: string;
   color?: string;
 }
@@ -332,6 +334,16 @@ const SCRIPT = `
 
   // ---------- markers & timeline ----------
   var markers = [];
+  // Points' lines and areas (islands, bridges, rapids...), under the markers.
+  d.items.forEach(function (it, i) {
+    if (!it.shape || !it.shape.coords || it.shape.coords.length < 2) return;
+    var col = it.color || '#0f4c5c';
+    var layer = it.shape.kind === 'area'
+      ? L.polygon(it.shape.coords, { color: col, weight: 2, opacity: 0.9, fillColor: col, fillOpacity: 0.18 })
+      : L.polyline(it.shape.coords, { color: col, weight: 5, opacity: 0.85, lineCap: 'round' });
+    layer.addTo(map).on('click', function () { select(i, true); });
+    bounds.extend(layer.getBounds());
+  });
   d.items.forEach(function (it, i) {
     if (!it.at) return;
     var html;
