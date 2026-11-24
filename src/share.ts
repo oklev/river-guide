@@ -42,7 +42,7 @@ function nearRoute(r: Route, lat: number, lng: number, km: number) {
 }
 
 /** Tracks with at least half their fixes inside the corridor count as "along this route". */
-function trackAlong(r: Route, t: Track, km: number) {
+export function trackAlong(r: Route, t: Track, km: number) {
   const step = Math.max(1, Math.floor(t.fixes.length / 200)); // sample long tracks
   let inside = 0;
   let total = 0;

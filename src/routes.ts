@@ -79,6 +79,7 @@ function popupHtml(r: Route): string {
         <button class="btn small" data-route-action="line" data-id="${r.id}">Edit line</button>
         <button class="btn small" data-route-action="reverse" data-id="${r.id}" title="Swap put-in and take-out">⇄</button>
         <button class="btn small" data-route-action="share" data-id="${r.id}">Share…</button>
+        <button class="btn small" data-route-action="report" data-id="${r.id}">Trip report</button>
         <button class="btn small primary" data-route-action="offline" data-id="${r.id}">Offline…</button>
       </div>
     </div>`;
@@ -456,6 +457,12 @@ export function initRoutes() {
         return editLine(r);
       case 'share':
         return openShare(r);
+      case 'report': {
+        map.closePopup();
+        // Uses the most recent GPS track along the route, if there is one.
+        const { exportTripReport, latestTrackAlong } = await import('./tripReport');
+        return exportTripReport({ route: r, track: latestTrackAlong(r) }).catch((err) => alert(`Couldn't make the trip report: ${(err as Error).message}`));
+      }
       case 'offline':
         return openOffline(r);
       case 'reverse':

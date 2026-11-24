@@ -67,6 +67,7 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Share…** on a route saves it as one `.riverguide.zip` file: the route, your points within a chosen distance of it, their photos, and optionally your GPS tracks along it. Offline maps aren't included; they can be downloaded again. Inside is a standard `route.geojson` plus a `photos/` folder.
 - **Import file** accepts `.riverguide.zip` and plain GeoJSON. Items are matched by ID and the newer copy wins, so moving data back and forth between devices doesn't duplicate anything or overwrite newer edits. Each device keeps its own offline downloads.
 - **Export GeoJSON** saves all points, routes and tracks, without photos, as a backup.
+- **Trip report** (on a route's or a track's popup) saves one self-contained web page of the trip: the map with your GPS track and the planned route, stats (distance, time on the water, average speed) and a timeline of the photos you took and the points you passed, with times and river miles. Tap an entry to jump the map to it; photos open full size and panoramas scroll. Photos and the map library are embedded, so it opens in any browser and can be sent to anyone (only the background map tiles need internet). From a route it uses your most recent track along it; without a track it lists the route's points and photos by river mile.
 
 ## Map tiles
 
@@ -134,6 +135,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/cameraRoll.ts` | Android photo sessions (camera app + camera-roll import) |
 | `src/myLocation.ts` | Live "you are here" marker (dot or boat icon) |
 | `src/sync/` | Device sync: merge logic, engine, Google Drive remote, Google sign-in, Photos picker |
+| `src/tripReport.ts`, `src/tripReportTemplate.ts` | Trip report export (self-contained HTML) |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |
