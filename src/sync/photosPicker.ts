@@ -4,7 +4,8 @@ import { cameraName, importFiles, toast } from '../photos';
 import { state } from '../state';
 import type { Photo } from '../types';
 import { classify, type PickedItem, type TripWindow } from './pickerMatch';
-import { $, escapeHtml, prefs } from '../ui';
+import { askCredits, type CreditItem } from './creditDialog';
+import { $, escapeHtml } from '../ui';
 import { googleConfigured, SCOPES } from './config';
 import { getToken, openExternal } from './googleAuth';
 import { isNative } from '../platform';
@@ -36,33 +37,6 @@ async function api(path: string, token: string, init: RequestInit = {}) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** "5s" -> 5000 */
 const dur = (s: string | undefined, fallback: number) => (s ? Math.round(parseFloat(s) * 1000) : fallback);
-
-// ---------- who took it ----------
-const CREDITS_KEY = 'cameraCredits';
-function loadCredits(): Record<string, string> {
-  try {
-    return JSON.parse(prefs.get(CREDITS_KEY) ?? '{}') ?? {};
-  } catch {
-    return {};
-  }
-}
-
-/** Ask once per new camera who it belongs to ("" = you); remembered for next time. */
-function creditsFor(cameras: Map<string, number>): Record<string, string> {
-  const known = loadCredits();
-  for (const [camera, n] of cameras) {
-    if (camera in known) continue;
-    const answer = prompt(
-      `${n} photo${n === 1 ? '' : 's'} came from a ${camera}. Who took ${n === 1 ? 'it' : 'them'}?\n` +
-        'Leave empty if this is your phone. (River Guide remembers this camera.)',
-      '',
-    );
-    if (answer === null) continue; // cancelled: ask again next time
-    known[camera] = answer.trim();
-  }
-  prefs.set(CREDITS_KEY, JSON.stringify(known));
-  return known;
-}
 
 const cameraOf = (m: PickedItem) =>
   cameraName(m.mediaFile.mediaFileMetadata?.cameraMake, m.mediaFile.mediaFileMetadata?.cameraModel);
@@ -117,12 +91,18 @@ async function pickAndImport(win: Window | null, trip?: TripWindow) {
   } while (page);
   const { fresh, duplicates, outside, videos } = classify(items, state.photos, trip);
 
-  const cameras = new Map<string, number>();
+  // Who took them? Asked with the photos on screen, one camera at a time.
+  const groups = new Map<string, CreditItem[]>();
   for (const m of fresh) {
-    const c = cameraOf(m);
-    if (c) cameras.set(c, (cameras.get(c) ?? 0) + 1);
+    const c = cameraOf(m) ?? '';
+    const thumb = async () => {
+      const res = await fetch(`${m.mediaFile.baseUrl}=w240-h240-c`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(String(res.status));
+      return URL.createObjectURL(await res.blob());
+    };
+    groups.set(c, [...(groups.get(c) ?? []), { id: m.id, thumb }]);
   }
-  const credits = cameras.size ? creditsFor(cameras) : {};
+  const credits = fresh.length ? await askCredits(groups) : new Map<string, string>();
 
   if (fresh.length) toast(`Importing ${fresh.length} photo${fresh.length === 1 ? '' : 's'} from Google Photos…`, 60_000);
   const files: File[] = [];
@@ -136,7 +116,7 @@ async function pickAndImport(win: Window | null, trip?: TripWindow) {
       lastModified: Date.parse(m.createTime) || Date.now(),
     });
     const camera = cameraOf(m);
-    const credit = camera ? credits[camera] : undefined;
+    const credit = credits.get(m.id);
     extras.set(file, { googleId: m.id, ...(camera ? { camera } : {}), ...(credit ? { credit } : {}) });
     files.push(file);
   }

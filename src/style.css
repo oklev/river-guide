@@ -412,3 +412,10 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .sync-head { display: flex; align-items: center; gap: 8px; }
 .sync-head .spacer { flex: 1; }
 .sync-error { color: var(--danger); }
+
+/* ---------- photo credits ---------- */
+.credit-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; max-height: 40vh; overflow: auto; }
+.credit-thumbs button { position: relative; padding: 0; border: 3px solid var(--accent); border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: var(--border); cursor: pointer; }
+.credit-thumbs img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.credit-thumbs button[aria-pressed="false"] { border-color: transparent; opacity: 0.35; }
+.credit-thumbs button[aria-pressed="false"]::after { content: '✕'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #fff; text-shadow: 0 1px 3px #000; }

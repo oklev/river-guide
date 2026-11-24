@@ -63,7 +63,7 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **From Google Photos** (Tracks tab) imports photos chosen in Google's photo picker. Google strips their GPS, so they're matched to a recorded track by time or placed by hand. Friends' photos from a shared album land in the right place as long as *you* recorded the track.
   - Pick freely: photos already in River Guide are skipped before downloading (same Google Photos item, same file name, or same capture time).
   - **Add Google Photos** on a track's popup keeps only photos taken during that trip (±20 min).
-  - Photos are credited by camera: the first time a new phone's photos arrive, River Guide asks who took them and remembers it (blank = you). Credits show on the photo and in trip reports.
+  - Photos are credited by camera: the first time a new phone's photos arrive, River Guide shows them and asks who took them (blank = you), and remembers it. If two people have the same phone model, tap the photos the other person took to leave them out; you're asked about those next, and that camera is asked about every time from then on. Credits show on the photo and in trip reports.
 - Needs a Google Cloud project; see "Setting up Google sync" below.
 
 **Data & sharing**

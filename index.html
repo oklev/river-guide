@@ -276,6 +276,25 @@
         </form>
       </dialog>
 
+      <dialog id="credit-dialog" class="editor">
+        <form method="dialog" class="dialog-body">
+          <h2>Who took these?</h2>
+          <p id="credit-camera" class="muted small"></p>
+          <div id="credit-thumbs" class="credit-thumbs"></div>
+          <p id="credit-hint" class="muted small">Tap any photo someone else took to leave it out. You'll be asked about those next.</p>
+          <label>Taken by
+            <input id="credit-name" list="credit-names" autocomplete="off" placeholder="Leave empty if it was you" />
+          </label>
+          <datalist id="credit-names"></datalist>
+          <label class="check-row"><input id="credit-remember" type="checkbox" checked /> <span id="credit-remember-label">Remember this for photos from this camera</span></label>
+          <div class="editor-actions">
+            <button value="skip" class="btn">Skip</button>
+            <span class="spacer"></span>
+            <button value="ok" class="btn primary">OK</button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog id="share-dialog" class="editor">
         <div class="dialog-body">
           <h2 id="share-title">Share route</h2>
