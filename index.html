@@ -113,6 +113,10 @@
         <button id="photo-session-camera" class="btn small primary">Camera</button>
         <button id="photo-session-end" class="btn small">End</button>
       </div>
+      <div id="trip-banner" class="trip-banner" hidden>
+        <span id="trip-text"></span>
+        <button id="trip-end" class="btn small">End trip</button>
+      </div>
       <div id="toast" class="toast" role="status" hidden></div>
 
       <div id="route-toolbar" class="route-toolbar" hidden>
@@ -370,6 +374,25 @@
             <button value="ok" class="btn primary">OK</button>
           </div>
         </form>
+      </dialog>
+
+      <dialog id="trip-dialog" class="editor">
+        <div class="dialog-body">
+          <h2 id="trip-title">Start a trip</h2>
+          <label>Put-in <select id="trip-from"></select></label>
+          <div class="footer-row"><button type="button" id="trip-swap" class="link small">⇅ Swap</button></div>
+          <label>Take-out <select id="trip-to"></select></label>
+          <div id="trip-summary" class="small"></div>
+          <label class="check-row"><input id="trip-record" type="checkbox" checked /> Record my GPS track (for the trip report)</label>
+          <div id="trip-offline" class="small" hidden>
+            This section isn't saved for offline use. <button type="button" id="trip-offline-save" class="link small">Save it now</button>
+          </div>
+          <div class="editor-actions">
+            <button type="button" id="trip-cancel" class="btn">Cancel</button>
+            <span class="spacer"></span>
+            <button type="button" id="trip-start" class="btn primary">Start trip</button>
+          </div>
+        </div>
       </dialog>
 
       <dialog id="import-dialog" class="editor">

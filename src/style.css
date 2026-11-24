@@ -255,6 +255,18 @@ body.offline .offline-badge { display: inline-block; }
   padding: 6px 8px 6px 14px; z-index: 1000; font-size: 14px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
 }
 .rec-banner[hidden], .toast[hidden], .hint[hidden] { display: none; }
+/* Trip banner: top of the map; it shows recording too, so the recording banner steps aside. */
+.trip-banner {
+  position: fixed; top: calc(var(--topbar-h) + 10px); left: 50%; transform: translateX(-50%);
+  width: min(620px, calc(100vw - 24px)); display: flex; align-items: center; gap: 10px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px 10px 8px 14px; z-index: 1000; font-size: 13px; line-height: 1.35; box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); cursor: pointer;
+}
+.trip-banner[hidden] { display: none; }
+.trip-banner #trip-text { flex: 1; }
+body.trip-on .rec-banner { display: none; }
+body.trip-on .photo-session { top: calc(var(--topbar-h) + 76px); }
+body.trip-on .hint { top: calc(var(--topbar-h) + 76px); }
 .access-row { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .access-row[hidden] { display: none; }
 .access-row span { display: flex; gap: 12px; flex-wrap: wrap; }

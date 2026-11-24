@@ -189,6 +189,8 @@ export interface Track extends Revisioned {
   source: 'recorded' | 'gpx';
   /** True while this device is still recording it. */
   recording?: boolean;
+  /** Recorded during a trip: the route section paddled (put-in to take-out). */
+  trip?: TripInfo;
   createdAt: string;
   updatedAt: string;
 }
@@ -327,4 +329,14 @@ export interface Tombstone {
   store: string;
   id: string;
   rev: string;
+}
+
+/** A trip on a route: from a put-in to a take-out, possibly through forks. */
+export interface TripInfo {
+  routeId: string;
+  from: string;
+  to: string;
+  /** The section's line, put-in to take-out. */
+  coords: LatLng[];
+  km: number;
 }

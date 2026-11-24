@@ -21,6 +21,7 @@ import { initSync, setOnReceived } from './sync';
 import { initSyncUi } from './sync/ui';
 import { initPhotosPicker } from './sync/photosPicker';
 import { initReportDialog } from './reportDialog';
+import { initTrips } from './trip';
 import { initSharedImport } from './sync/sharedImport';
 import { $, prefs } from './ui';
 
@@ -135,6 +136,8 @@ setOnReceived(async () => {
   renderGauges();
   void refreshNav();
 });
+// A trip in progress (from before the app was closed) needs the routes loaded.
+initTrips();
 initSync();
 initSyncUi();
 // A route shared through Google Drive (?import= link, or riverguide:// in the Android app).

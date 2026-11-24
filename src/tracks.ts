@@ -107,11 +107,20 @@ interface Recorder {
 }
 let recorder: Recorder | null = null;
 export const isRecording = () => recorder !== null;
+export const recordingTrack = () => recorder?.track;
+
+/** Listeners for recorded fixes (trip progress); they arrive in the background on Android too. */
+const fixListeners = new Set<(lat: number, lng: number, time: number) => void>();
+export function onRecordedFix(cb: (lat: number, lng: number, time: number) => void): () => void {
+  fixListeners.add(cb);
+  return () => fixListeners.delete(cb);
+}
 
 function addFix(lat: number, lng: number, time: number, accuracy: number | null) {
   const r = recorder;
   if (!r) return;
   if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
+  fixListeners.forEach((cb) => cb(lat, lng, time));
   const last = r.track.fixes[r.track.fixes.length - 1];
   if (last && distKm([last[0], last[1]], [lat, lng]) * 1000 < MIN_STEP_M && time - last[2] < 60_000) return;
   r.track.fixes.push([+lat.toFixed(6), +lng.toFixed(6), time, accuracy == null ? -1 : Math.round(accuracy)]);
@@ -186,12 +195,13 @@ async function startWeb(): Promise<() => Promise<void>> {
   };
 }
 
-async function startRecording() {
-  if (recorder) return;
+export async function startRecording(opts: { name?: string; trip?: Track['trip'] } = {}): Promise<boolean> {
+  if (recorder) return true;
   const now = new Date();
   const track: Track = {
     id: crypto.randomUUID(),
-    name: `Trip ${now.toLocaleDateString([], { month: 'short', day: 'numeric' })}`,
+    name: opts.name ?? `Trip ${now.toLocaleDateString([], { month: 'short', day: 'numeric' })}`,
+    ...(opts.trip ? { trip: opts.trip } : {}),
     fixes: [],
     source: 'recorded',
     recording: true,
@@ -204,7 +214,7 @@ async function startRecording() {
   } catch (err) {
     recorder = null;
     alert(`Couldn't start recording: ${(err as Error).message}`);
-    return;
+    return false;
   }
   await saveTrack(track);
   recorder.timer = window.setInterval(updateBanner, 1000);
@@ -212,9 +222,11 @@ async function startRecording() {
   if (!isNative) {
     $('rec-note').hidden = false;
   }
+  return true;
 }
 
-async function stopRecording() {
+/** Stop recording; resolves with the saved track (undefined if nothing was recorded). */
+export async function stopRecording(): Promise<Track | undefined> {
   const r = recorder;
   if (!r) return;
   await r.stop();
@@ -231,6 +243,7 @@ async function stopRecording() {
   renderTracks();
   updateBanner();
   document.dispatchEvent(new CustomEvent('tracks-changed'));
+  return r.track.fixes.length >= 2 ? r.track : undefined;
 }
 
 function updateBanner() {

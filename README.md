@@ -23,6 +23,11 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - A live marker follows you while the app is open: a pulsing blue dot, or a **kayak, paddleboard or canoe** (choose in the sidebar under "Show my location as"). It turns to point the way you're heading, from the GPS's own heading when moving or worked out from your last few metres. A faint circle shows the GPS accuracy.
 - ◎ centers the map on you. The marker appears by itself on startup if location is already allowed (it never prompts), and the GPS is only used while the app is on screen.
 
+**Forks, access points and trips**
+- **Forks:** **+ Fork** on a route draws a channel or side branch from the route line. End it back on the line for a channel that rejoins (e.g. around an island); end anywhere else for a side branch (e.g. up a tributary). River miles carry through forks, points along forks are listed in the route popup, and offline downloads include them.
+- **Access points attach to routes** at the nearest spot within 300 m (a dashed connector shows where). In the point editor you can detach one, set it back to automatic, or tap the route to pick the exact spot.
+- **Start trip…** on a route: pick a put-in and take-out from its access points (or the ends of the route and side branches). The section, through any forks between them, is highlighted, and you can record a GPS track with it. A banner shows distance done of the total, your pace and estimated arrival (after a couple of minutes of movement), and the next hazards, rapids, bridges and access points ahead. If the section isn't saved offline, the dialog offers to save just that section. **End trip** stops recording and offers a trip report, which uses the section as its planned route. A trip survives the app being closed.
+
 **Offline**
 - The app is an installable PWA, and a service worker caches the app shell.
 - Points and routes live in IndexedDB, so they're always available offline.
@@ -145,6 +150,9 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/sync/` | Device sync: merge logic, engine, Google Drive remote, Google sign-in, Photos picker |
 | `src/tripReport.ts`, `src/tripReportTemplate.ts`, `src/reportDialog.ts` | Trip report: options dialog and self-contained HTML export |
 | `src/mapFeatures.ts` | Finding islands and bridges on the base map, to turn them into points |
+| `src/routeGraph.ts` | Routes as a network: forks, river miles, paths between places |
+| `src/access.ts` | Access points attached to spots on routes |
+| `src/trip.ts` | Trips: put-in/take-out, highlighted section, live progress |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |

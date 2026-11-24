@@ -224,12 +224,16 @@ export function candidatePhotos(routeCoords: LatLng[] | undefined, tracks: Track
 /** Sensible defaults for the dialog. */
 export function defaultOptions(src: ReportSource): ReportOptions {
   const { selected: tracks } = candidateTracks(src);
-  const route = src.route ?? (src.track ? routeAlong(src.track) : undefined);
-  const { selected } = candidatePhotos(route?.coords, tracks);
+  // A track recorded on a trip: its planned route is the section paddled.
+  const trip = src.track?.trip ?? tracks.find((t) => t.trip)?.trip;
+  const tripRoute = trip ? state.routes.find((r) => r.id === trip.routeId) : undefined;
+  const route = src.route ?? tripRoute ?? (src.track ? routeAlong(src.track) : undefined);
+  const line = trip && (!src.route || src.route.id === trip.routeId) ? trip.coords : route?.coords;
+  const { selected } = candidatePhotos(line, tracks);
   return {
-    title: route?.name ?? src.track?.name ?? 'Trip',
+    title: trip && route ? `${route.name}: ${trip.from} to ${trip.to}` : (route?.name ?? src.track?.name ?? 'Trip'),
     subtitle: route?.description ?? '',
-    route: route ? { coords: route.coords, color: route.color } : undefined,
+    route: route && line ? { coords: line, color: route.color } : undefined,
     tracks,
     photoIds: [...selected],
     points: true,

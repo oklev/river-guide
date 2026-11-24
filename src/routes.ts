@@ -94,8 +94,9 @@ function popupHtml(r: Route): string {
         <button class="btn small" data-route-action="fork" data-id="${r.id}" title="Add a channel or side branch">+ Fork</button>
         <button class="btn small" data-route-action="reverse" data-id="${r.id}" title="Swap put-in and take-out">⇄</button>
         <button class="btn small" data-route-action="share" data-id="${r.id}">Share…</button>
+        <button class="btn small primary" data-route-action="trip" data-id="${r.id}">Start trip…</button>
         <button class="btn small" data-route-action="report" data-id="${r.id}">Trip report…</button>
-        <button class="btn small primary" data-route-action="offline" data-id="${r.id}">Offline…</button>
+        <button class="btn small" data-route-action="offline" data-id="${r.id}">Offline…</button>
       </div>
     </div>`;
 }
@@ -603,6 +604,10 @@ export function initRoutes() {
     switch (btn.dataset.routeAction) {
       case 'fork':
         return drawFork(r);
+      case 'trip': {
+        const { openTripDialog } = await import('./trip');
+        return openTripDialog(r);
+      }
       case 'open':
         return focusRoute(r);
       case 'details':

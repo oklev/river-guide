@@ -106,8 +106,21 @@ function redraw() {
   if (marker) marker.setIcon(makeIcon());
 }
 
+/** Listeners for live positions (trip progress). */
+const positionListeners = new Set<(lat: number, lng: number, time: number) => void>();
+export function onPosition(cb: (lat: number, lng: number, time: number) => void): () => void {
+  positionListeners.add(cb);
+  return () => positionListeners.delete(cb);
+}
+
+/** Start following the GPS if it isn't already (e.g. when a trip starts). */
+export function ensureWatching() {
+  startWatch();
+}
+
 function onFix(pos: GeolocationPosition) {
   const at: LatLng = [pos.coords.latitude, pos.coords.longitude];
+  positionListeners.forEach((cb) => cb(at[0], at[1], pos.timestamp));
   // Heading: the GPS's own when moving, else from how far we've moved since the last turn.
   const gpsHeading = pos.coords.heading;
   const speed = pos.coords.speed;

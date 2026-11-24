@@ -87,7 +87,7 @@ interface Node {
  * needed). Returns the path's coordinates and length, or null if they aren't
  * connected.
  */
-export function pathBetween(r: Route, a: RoutePlace, b: RoutePlace): { coords: LatLng[]; km: number } | null {
+export function pathBetween(r: Route, a: RoutePlace, b: RoutePlace): { coords: LatLng[]; km: number; forks: string[] } | null {
   // Nodes: both ends, the ends of every line, and where forks meet the main line.
   const nodes: Node[] = [a, b];
   const forks = r.forks ?? [];
@@ -144,15 +144,17 @@ export function pathBetween(r: Route, a: RoutePlace, b: RoutePlace): { coords: L
   const order: number[] = [];
   for (let v = goal; v >= 0; v = prev[v]) order.unshift(v);
   const coords: LatLng[] = [];
+  const used: string[] = [];
   for (let k = 1; k < order.length; k++) {
     const p = list[order[k - 1]];
     const q = list[order[k]];
     if (p.branch !== q.branch) continue; // a junction hop: no distance
+    if (p.branch !== MAIN && q.km !== p.km && !used.includes(p.branch)) used.push(p.branch);
     const piece = sliceLine(branchCoords(r, p.branch), p.km, q.km);
     coords.push(...(coords.length ? piece.slice(1) : piece));
   }
   if (!coords.length) coords.push(positionOf(r, a));
-  return { coords, km: dist[goal] };
+  return { coords, km: dist[goal], forks: used };
 }
 
 /** Build a fork from a drawn line: it must start near the main line; ending near it makes a channel. */
