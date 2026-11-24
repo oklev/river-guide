@@ -310,6 +310,18 @@
             <label class="check-row"><input id="rep-sun" type="checkbox" checked /> Sun over the map</label>
             <label class="check-row"><input id="rep-legend" type="checkbox" checked /> Map legend</label>
           </fieldset>
+          <fieldset id="rep-share-box" hidden>
+            <legend>Share through Google Drive</legend>
+            <label>Share with
+              <input id="rep-share-emails" type="text" inputmode="email" autocomplete="off" placeholder="Email addresses, separated by commas" />
+            </label>
+            <p class="muted small">Saved to "River Guide › Trip reports" in your Drive. Google emails each person a link that opens the report in their browser (they sign in with that Google account).</p>
+            <div class="footer-row"><button type="button" id="rep-drive" class="btn small">Save to Google Drive</button></div>
+            <div id="rep-share-result" class="small" hidden>
+              <a id="rep-share-link" target="_blank" rel="noopener">Open the shared report</a> ·
+              <button type="button" id="rep-share-copy" class="link small">Copy link</button>
+            </div>
+          </fieldset>
           <div id="rep-status" class="small" role="status"></div>
           <div class="editor-actions">
             <button value="cancel" class="btn">Cancel</button>
