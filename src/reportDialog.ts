@@ -8,11 +8,16 @@ import {
   candidateTracks,
   defaultOptions,
   exportTripReport,
+  reportFile,
   trackStats,
   type ReportOptions,
   type ReportSource,
 } from './tripReport';
 import type { LatLng, Photo, Track } from './types';
+import { prefs } from './ui';
+import { googleConfigured, REPORT_VIEWER_URL, SCOPES } from './sync/config';
+import { getToken } from './sync/googleAuth';
+import { findOrCreateChildFolder, findOrCreateFolder, shareWith, uploadLarge } from './sync/drive';
 
 /**
  * Trip report dialog: choose the title, which tracks and photos to include,
@@ -134,6 +139,8 @@ export function openReportDialog(src: ReportSource) {
     check(`rep-${k}`).checked = k === 'points' ? opts.points : opts.show[k];
   }
   $('rep-status').textContent = '';
+  $('rep-share-box').hidden = !googleConfigured();
+  $('rep-share-result').hidden = true;
   renderRoute();
   renderTracks();
   refreshPhotoCandidates();
@@ -141,8 +148,8 @@ export function openReportDialog(src: ReportSource) {
   dialog().showModal();
 }
 
-async function save() {
-  const btn = $<HTMLButtonElement>('rep-save');
+/** Read the dialog's fields into `opts`. */
+function readOptions() {
   opts.title = check('rep-title').value.trim() || 'Trip';
   opts.subtitle = $<HTMLTextAreaElement>('rep-subtitle').value.trim();
   opts.route = currentRoute();
@@ -154,6 +161,11 @@ async function save() {
     sun: check('rep-sun').checked,
     legend: check('rep-legend').checked,
   };
+}
+
+async function save() {
+  const btn = $<HTMLButtonElement>('rep-save');
+  readOptions();
   btn.disabled = true;
   $('rep-status').textContent = 'Making the report…';
   try {
@@ -166,7 +178,61 @@ async function save() {
   }
 }
 
+const EMAIL = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+
+/** Save the report to Drive (River Guide › Trip reports) and share it with the given people. */
+async function saveToDrive() {
+  const btn = $<HTMLButtonElement>('rep-drive');
+  const emails = check('rep-share-emails')
+    .value.split(/[\s,;]+/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const bad = emails.filter((e) => !EMAIL.test(e));
+  if (bad.length) {
+    $('rep-status').textContent = `Not an email address: ${bad.join(', ')}`;
+    return;
+  }
+  readOptions();
+  btn.disabled = true;
+  try {
+    // From the tap: Google may ask to sign in.
+    await getToken([SCOPES.drive], true);
+    $('rep-status').textContent = 'Making the report…';
+    const { name, html } = await reportFile(opts);
+    $('rep-status').textContent = 'Saving to Google Drive…';
+    const root = prefs.get('driveFolder') || (await findOrCreateFolder('River Guide'));
+    const folder = await findOrCreateChildFolder(root, 'Trip reports');
+    const id = await uploadLarge(name, new Blob([html], { type: 'text/html' }), 'text/html', folder);
+    const link = `${REPORT_VIEWER_URL}?id=${encodeURIComponent(id)}`;
+    for (const [i, email] of emails.entries()) {
+      $('rep-status').textContent = `Sharing with ${email} (${i + 1} of ${emails.length})…`;
+      const message = [`Trip report: ${opts.title}`, '', `Open it here: ${link}`].join('\n');
+      await shareWith(id, email, message);
+    }
+    const a = $<HTMLAnchorElement>('rep-share-link');
+    a.href = link;
+    $('rep-share-result').hidden = false;
+    $('rep-status').textContent = emails.length
+      ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.`
+      : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.';
+  } catch (err) {
+    $('rep-status').textContent = `Couldn't save to Google Drive: ${(err as Error).message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 export function initReportDialog() {
+  $('rep-drive').addEventListener('click', () => void saveToDrive());
+  $('rep-share-copy').addEventListener('click', async () => {
+    const link = $<HTMLAnchorElement>('rep-share-link').href;
+    try {
+      await navigator.clipboard.writeText(link);
+      $('rep-status').textContent = 'Link copied.';
+    } catch {
+      prompt('Copy this link:', link);
+    }
+  });
   $('rep-tracks').addEventListener('change', (e) => {
     const id = (e.target as HTMLElement).dataset.track;
     const t = allTracks.find((x) => x.id === id);

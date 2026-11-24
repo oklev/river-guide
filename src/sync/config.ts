@@ -21,3 +21,6 @@ export const SCOPES = {
 };
 
 export const googleConfigured = () => !!GOOGLE.webClientId;
+
+/** Public page that opens trip reports shared through Google Drive. */
+export const REPORT_VIEWER_URL = 'https://oklev.github.io/river-guide/app/view.html';

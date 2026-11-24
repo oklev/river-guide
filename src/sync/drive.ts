@@ -103,3 +103,45 @@ export class DriveFolder implements Remote {
     return { id: f.id, name: f.name, version: String(f.version) };
   }
 }
+
+// ---------- reports: upload any size, share ----------
+/** A folder inside another one (created if missing). */
+export async function findOrCreateChildFolder(parent: string, name: string): Promise<string> {
+  const query = `name='${q(name)}' and mimeType='${FOLDER_MIME}' and trashed=false and '${q(parent)}' in parents`;
+  const found = await (await call(`${API}/files?q=${encodeURIComponent(query)}&fields=files(id)&pageSize=1`)).json();
+  return found.files?.[0]?.id ?? createFolder(name, parent);
+}
+
+/** Upload a file of any size (simple uploads stop at 5 MB; reports with photos can be bigger). */
+export async function uploadLarge(name: string, data: Blob, type: string, parent: string): Promise<string> {
+  const start = await call(`${UPLOAD}/files?uploadType=resumable&fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': type },
+    body: JSON.stringify({ name, parents: [parent], mimeType: type }),
+  });
+  const session = start.headers.get('Location');
+  if (!session) throw new Error('Google Drive: no upload session');
+  const res = await fetch(session, { method: 'PUT', headers: { 'Content-Type': type }, body: data });
+  if (!res.ok) throw new Error(`Google Drive upload: ${res.status}`);
+  return (await res.json()).id;
+}
+
+/** Let someone view a file; Google emails them, with `message` in the email. */
+export async function shareWith(fileId: string, email: string, message: string): Promise<void> {
+  const params = new URLSearchParams({ sendNotificationEmail: 'true', emailMessage: message, fields: 'id' });
+  await call(`${API}/files/${fileId}/permissions?${params}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }),
+  });
+}
+
+/** Download a file's contents (the caller must have access under drive.file). */
+export async function downloadText(fileId: string): Promise<{ ok: true; text: string; name?: string } | { ok: false; status: number }> {
+  const token = await getToken([SCOPES.drive]);
+  const res = await fetch(`${API}/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return { ok: false, status: res.status };
+  const meta = await fetch(`${API}/files/${fileId}?fields=name`, { headers: { Authorization: `Bearer ${token}` } });
+  const name = meta.ok ? (await meta.json()).name : undefined;
+  return { ok: true, text: await res.text(), name };
+}

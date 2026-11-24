@@ -328,8 +328,13 @@ export function routeAlong(t: Track): Route | undefined {
   return state.routes.find((r) => trackAlong(r, t, 0.5));
 }
 
-export async function exportTripReport(o: ReportOptions) {
+/** The report as a file: name and HTML. */
+export async function reportFile(o: ReportOptions): Promise<{ name: string; html: string }> {
   const data = await buildReport(o);
-  const html = await reportHtml(data);
-  await saveFile(`${safeName(data.title)}-trip-report.html`, html, 'text/html');
+  return { name: `${safeName(data.title)}-trip-report.html`, html: await reportHtml(data) };
+}
+
+export async function exportTripReport(o: ReportOptions) {
+  const { name, html } = await reportFile(o);
+  await saveFile(name, html, 'text/html');
 }
