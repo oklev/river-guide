@@ -143,20 +143,27 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 - Snap traced routes to the actual river channel (NHD flowlines)
 - Shared backend so multiple people can edit
 
+## Website
+
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes to GitHub Pages on every push to `main` (Settings → Pages → Source: GitHub Actions):
+
+- [oklev.github.io/river-guide](https://oklev.github.io/river-guide/): homepage and [privacy policy](https://oklev.github.io/river-guide/privacy.html), from `site/`
+- [oklev.github.io/river-guide/app](https://oklev.github.io/river-guide/app/): the web app, installable as a PWA
+
 ## Setting up Google sync
 
 Drive sync and the Google Photos import need a (free) Google Cloud project, registered under your own Google account. One-time, about 15 minutes:
 
 1. **Create a project:** [console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate), name it "River Guide", and select it.
 2. **Enable APIs** ([API Library](https://console.cloud.google.com/apis/library)): **Google Drive API**, **Google Picker API** and **Photos Picker API**.
-3. **Consent screen** ([Google Auth Platform](https://console.cloud.google.com/auth/overview) → Get started): app name "River Guide", your email for support and contact, audience **External**.
+3. **Consent screen** ([Google Auth Platform](https://console.cloud.google.com/auth/overview) → Get started): app name "River Guide", your email for support and contact, audience **External**. Then on **Branding**: homepage `https://oklev.github.io/river-guide/`, privacy policy `https://oklev.github.io/river-guide/privacy.html`, authorized domain `oklev.github.io`.
 4. **Data access** → Add or remove scopes → add these by hand, then Save:
    - `https://www.googleapis.com/auth/drive.file`
    - `https://www.googleapis.com/auth/photospicker.mediaitems.readonly`
 5. **Audience** → **Publish app**, so the status is **In production**. (In "Testing", Google signs you out every 7 days.)
-6. **Clients** → Create client → **Web application**: authorized JavaScript origin `http://localhost:5173` (add any other address you open the app at). Copy the **Client ID**.
+6. **Clients** → Create client → **Web application**: authorized JavaScript origins `https://oklev.github.io` (the hosted app) and `http://localhost:5173` (`npm run dev`). Copy the **Client ID**.
 7. **Clients** → Create client → **Android**: package name `io.github.oklev.riverguide`, SHA-1 `1D:13:C1:BD:9E:2E:7C:92:BA:B4:C0:E3:78:C9:9E:19:3B:4E:84:51` (the release signing key, which also signs debug builds).
-8. **API key** ([Credentials](https://console.cloud.google.com/apis/credentials) → Create credentials → API key): restrict it to the **Google Picker API**, and to websites `http://localhost:5173/*` and `https://localhost/*` (the Android app). Copy the key.
+8. **API key** ([Credentials](https://console.cloud.google.com/apis/credentials) → Create credentials → API key): restrict it to the **Google Picker API**, and to websites `https://oklev.github.io/*`, `http://localhost:5173/*` and `https://localhost/*` (the Android app). Copy the key.
 9. Put the Client ID, API key and **project number** (on the project dashboard) in `src/sync/config.ts`.
 
 None of these values are secrets: client IDs and restricted API keys are designed to ship inside apps.
