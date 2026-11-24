@@ -116,20 +116,21 @@ footer { text-align: center; font-size: 13px; padding: 8px 16px 32px; }
 .thumb-pin { width: 38px; height: 38px; border-radius: 8px; overflow: hidden; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.5); }
 .thumb-pin img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pt-pin { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; display: grid; place-items: center; color: #fff; font-size: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
-.speed-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); }
 .legend { background: rgb(255 255 255 / 0.92); color: #1d2a30; border-radius: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.6; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3); }
 .legend .row { display: flex; align-items: center; gap: 6px; }
 .legend svg { flex: none; }
 .legend .ramp { width: 90px; height: 8px; border-radius: 4px; }
 .legend .scale { display: flex; justify-content: space-between; width: 90px; font-size: 11px; color: #61727a; }
-/* Sun gauge, left of the map */
-.sun { width: 64px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); font-size: 11px; line-height: 1.3; text-align: center; }
+/* Sun strip across the top of the map: time runs left to right */
+.map-wrap { flex-direction: column; }
+.sun { height: 78px; flex: none; display: flex; border-bottom: 1px solid var(--border); font-size: 12px; line-height: 1.35; background: #123c52; }
 .sun[hidden] { display: none; }
-.sun .gauge { position: relative; flex: 1; min-height: 0; }
-.sun svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.sun-dot { position: absolute; left: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: #ffd23f; border: 2px solid #fff; box-shadow: 0 0 10px 3px rgb(255 210 63 / 0.7); transition: top 0.15s; }
-.sun .info { padding: 6px 2px; border-bottom: 1px solid var(--border); }
-.sun .alt { font-size: 15px; font-weight: 700; }
+.sun .info { width: 110px; flex: none; display: flex; flex-direction: column; justify-content: center; padding: 4px 8px; background: var(--bg); border-right: 1px solid var(--border); }
+.sun .info b { font-size: 14px; }
+.sun .gauge { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.sun svg { position: absolute; left: 0; top: 0; display: block; }
+.sun-dot { position: absolute; width: 16px; height: 16px; transform: translate(-50%, -50%); border-radius: 50%; background: #ffd23f; border: 2px solid #fff; box-shadow: 0 0 10px 3px rgb(255 210 63 / 0.7); }
+#map { min-height: 0; }
 .viewer { position: fixed; inset: 0; background: #000; z-index: 2000; display: flex; flex-direction: column; }
 .viewer[hidden] { display: none; }
 .viewer-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; }
@@ -185,10 +186,13 @@ const SCRIPT = `
   var timed = track.length > 1 && track[0][2] > 0 && track[track.length - 1][2] > track[0][2];
   if (d.route.length) { var r = L.polyline(d.route, { color: d.routeColor, weight: 4, opacity: 0.5, dashArray: '8 8' }).addTo(map); bounds.extend(r.getBounds()); }
   var TRACK_COLOR = '#37474f';
-  if (track.length) { var tl = L.polyline(trackLL, { color: TRACK_COLOR, weight: 2.5, opacity: 0.85, interactive: false }).addTo(map); bounds.extend(tl.getBounds()); }
+  if (track.length) bounds.extend(L.latLngBounds(trackLL));
+  if (track.length && !timed) L.polyline(trackLL, { color: TRACK_COLOR, weight: 3, opacity: 0.85 }).addTo(map);
 
-  // ---------- speed: a dot every 10 minutes, coloured relative to the trip ----------
-  var RAMP = ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'];
+  // ---------- speed: the track split wherever the pace changed ----------
+  // Slow purple to fast yellow: stands out on blue water and the topo map.
+  var RAMP = ['#5e35b1', '#c2185b', '#f4511e', '#ffb300', '#ffee58'];
+  var STOP_COLOR = '#9e9e9e';
   function mix(a, b, f) {
     var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
     var ch = function (sh) { return Math.round(((pa >> sh) & 255) * (1 - f) + ((pb >> sh) & 255) * f); };
@@ -199,40 +203,76 @@ const SCRIPT = `
     var i = Math.min(RAMP.length - 2, Math.floor(f));
     return mix(RAMP[i], RAMP[i + 1], f - i);
   }
-  function posAt(t) {
-    for (var i = 1; i < track.length; i++) {
-      if (track[i][2] >= t) {
-        var a = track[i - 1], b = track[i], f = b[2] > a[2] ? (t - a[2]) / (b[2] - a[2]) : 0;
-        return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
-      }
-    }
-    return trackLL[trackLL.length - 1];
-  }
-  var speedRange = null;
+  var STOP_MPH = 0.4;
+  var runs = [];
   if (timed) {
-    var WIN = 10 * 60000, t0 = track[0][2], tEnd = track[track.length - 1][2], wins = [];
-    for (var w = t0; w < tEnd; w += WIN) {
-      var km = 0, ms = 0;
-      for (var i = 1; i < track.length; i++) {
-        var a = track[i - 1], b = track[i];
-        if (a[2] < w || b[2] > w + WIN || b[2] <= a[2]) continue;
-        km += distKm(a, b); ms += b[2] - a[2];
+    // Distance along a stretch, measured between fixes at least 30 s apart: adding up every
+    // fix would count GPS jitter as movement (standing still would look like ~2 mph).
+    var runKm = function (a, b) {
+      var km = 0, prev = a;
+      for (var i = a + 1; i <= b; i++) {
+        if (i === b || track[i][2] - track[prev][2] >= 30000) { km += distKm(track[prev], track[i]); prev = i; }
       }
-      if (ms >= 2 * 60000) wins.push({ start: w, end: Math.min(w + WIN, tEnd), mph: (km * MI_PER_KM) / (ms / 3600000) });
+      return km;
+    };
+    // Speed at each fix: how far you got over a minute either side (jitter cancels out).
+    var HALF = 60000, smooth = [], lo = 0, hi = 0;
+    for (var i = 0; i < track.length; i++) {
+      var t = track[i][2];
+      while (track[lo][2] < t - HALF) lo++;
+      while (hi < track.length - 1 && track[hi + 1][2] <= t + HALF) hi++;
+      var dt = track[hi][2] - track[lo][2];
+      smooth.push(dt > 0 ? (distKm(track[lo], track[hi]) * MI_PER_KM) / (dt / 3600000) : 0);
     }
-    if (wins.length) {
-      var lo = Math.min.apply(null, wins.map(function (x) { return x.mph; }));
-      var hi = Math.max.apply(null, wins.map(function (x) { return x.mph; }));
-      speedRange = [lo, hi];
-      wins.forEach(function (x) {
-        var f = hi - lo < 0.1 ? 0.5 : (x.mph - lo) / (hi - lo);
-        var m = L.marker(posAt((x.start + x.end) / 2), {
-          icon: L.divIcon({ className: '', html: '<div class="speed-dot" style="background:' + rampColor(f) + '"></div>', iconSize: [12, 12], iconAnchor: [6, 6] }),
-          zIndexOffset: -100,
-        }).addTo(map);
-        m.bindTooltip(fmtTime(x.start) + '–' + fmtTime(x.end) + ' · ' + x.mph.toFixed(1) + ' mph', { direction: 'top', offset: [0, -6] });
-      });
+    // Grow a run while the pace stays within a band of its average; start a new one when it changes.
+    var start = 0;
+    for (var i = 1; i < track.length; i++) {
+      var avg = 0, nAvg = 0;
+      for (var j = start; j < i; j++) { avg += smooth[j]; nAvg++; }
+      avg /= nAvg;
+      var v = smooth[i];
+      var stoppedNow = v < STOP_MPH, stoppedRun = avg < STOP_MPH;
+      var tol = Math.max(0.35, 0.15 * avg);
+      if (i - 1 > start && (stoppedNow !== stoppedRun || (!stoppedNow && Math.abs(v - avg) > tol))) {
+        runs.push([start, i - 1]);
+        start = i - 1;
+      }
     }
+    runs.push([start, track.length - 1]);
+    // Describe each run; fold blips under 40 s into the neighbour with the closest pace.
+    var describe = function (a, b) {
+      var ms = track[b][2] - track[a][2], mi = runKm(a, b) * MI_PER_KM;
+      return { a: a, b: b, ms: ms, mi: mi, mph: ms > 0 ? mi / (ms / 3600000) : 0 };
+    };
+    runs = runs.map(function (x) { return describe(x[0], x[1]); });
+    for (var pass = 0; pass < 3; pass++) {
+      for (var k = 0; k < runs.length; k++) {
+        if (runs[k].ms >= 40000 || runs.length < 2) continue;
+        var prev = runs[k - 1], next = runs[k + 1];
+        var into = !prev ? k + 1 : !next ? k - 1 : Math.abs(prev.mph - runs[k].mph) <= Math.abs(next.mph - runs[k].mph) ? k - 1 : k + 1;
+        var m = describe(Math.min(runs[into].a, runs[k].a), Math.max(runs[into].b, runs[k].b));
+        runs.splice(Math.min(into, k), 2, m);
+        k--;
+      }
+    }
+    var moving = runs.filter(function (x) { return x.mph >= STOP_MPH; });
+    var lo2 = Math.min.apply(null, moving.map(function (x) { return x.mph; }));
+    var hi2 = Math.max.apply(null, moving.map(function (x) { return x.mph; }));
+    var speedRange = moving.length ? [lo2, hi2] : null;
+    runs.forEach(function (x) {
+      var stopped = x.mph < STOP_MPH;
+      var color = stopped ? STOP_COLOR : rampColor(hi2 - lo2 < 0.1 ? 0.5 : (x.mph - lo2) / (hi2 - lo2));
+      var pts = trackLL.slice(x.a, x.b + 1);
+      x.halo = L.polyline(pts, { color: '#1b262c', weight: 7.5, opacity: 0.85, interactive: false }).addTo(map); // dark outline
+      x.line = L.polyline(pts, { color: color, weight: 4.5, opacity: 1, interactive: false }).addTo(map);
+      // A wide invisible copy makes the section easy to hover.
+      x.hit = L.polyline(pts, { weight: 22, opacity: 0 }).addTo(map);
+      var label = (stopped ? 'Stopped' : x.mph.toFixed(1) + ' mph') + ' · ' + fmtDur(x.ms) +
+        (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(track[x.a][2]) + '–' + fmtTime(track[x.b][2]);
+      x.hit.bindTooltip(label, { sticky: true, direction: 'top', offset: [0, -10] });
+      x.hit.on('mouseover', function () { x.line.setStyle({ weight: 7 }); x.halo.setStyle({ weight: 10 }); });
+      x.hit.on('mouseout', function () { x.line.setStyle({ weight: 4.5 }); x.halo.setStyle({ weight: 7.5 }); });
+    });
   }
 
   // ---------- legend ----------
@@ -241,10 +281,11 @@ const SCRIPT = `
     var div = L.DomUtil.create('div', 'legend');
     var h = '';
     if (d.route.length) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + esc(d.routeColor) + '" stroke-width="3" stroke-dasharray="6 4" opacity="0.7"/></svg>Planned route</div>';
-    if (track.length) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + TRACK_COLOR + '" stroke-width="2.5"/></svg>GPS track</div>';
-    if (speedRange) {
-      h += '<div>Speed, every 10 min</div><div class="ramp" style="background:linear-gradient(90deg,' + RAMP.join(',') + ')"></div>' +
+    if (track.length && !timed) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + TRACK_COLOR + '" stroke-width="2.5"/></svg>GPS track</div>';
+    if (timed && speedRange) {
+      h += '<div>GPS track, by speed</div><div class="ramp" style="background:linear-gradient(90deg,' + RAMP.join(',') + ')"></div>' +
         '<div class="scale"><span>' + speedRange[0].toFixed(1) + '</span><span>' + speedRange[1].toFixed(1) + ' mph</span></div>';
+      if (runs.some(function (x) { return x.mph < STOP_MPH; })) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + STOP_COLOR + '" stroke-width="4"/></svg>Stopped</div>';
     }
     div.innerHTML = h;
     return div;
@@ -299,8 +340,7 @@ const SCRIPT = `
 
   // ---------- hovering the track: follow along in the timeline ----------
   if (timed) {
-    var hover = L.circleMarker(trackLL[0], { radius: 7, color: '#fff', weight: 2, fillColor: TRACK_COLOR, fillOpacity: 1, interactive: false });
-    var hit = L.polyline(trackLL, { weight: 24, opacity: 0, interactive: true }).addTo(map);
+    var hover = L.circleMarker(trackLL[0], { radius: 6, color: '#fff', weight: 2, fillColor: TRACK_COLOR, fillOpacity: 1, interactive: false });
     var nearIdx = -1, last = 0;
     var follow = function (e) {
       var now = Date.now();
@@ -313,7 +353,6 @@ const SCRIPT = `
       }
       var t = track[best][2];
       hover.setLatLng(trackLL[best]).addTo(map);
-      hover.bindTooltip(fmtTime(t), { permanent: true, direction: 'right', offset: [8, 0] }).openTooltip();
       showSun(t);
       // The timeline entry closest in time (a photo or point from that part of the trip).
       var ni = -1, nd = Infinity;
@@ -328,12 +367,14 @@ const SCRIPT = `
         if (lis[ni]) { lis[ni].classList.add('near'); lis[ni].scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       }
     };
-    hit.on('mousemove', follow);
-    hit.on('click', follow);
-    hit.on('mouseout', function () { hover.remove(); });
+    runs.forEach(function (x) {
+      x.hit.on('mousemove', follow);
+      x.hit.on('click', follow);
+      x.hit.on('mouseout', function () { hover.remove(); });
+    });
   }
 
-  // ---------- sun gauge ----------
+  // ---------- sun: its path across the sky during the trip ----------
   // Sun altitude from date, time and place (formulas as in SunCalc / NOAA).
   function sunAlt(t, lat, lng) {
     var dd = t / 86400000 - 0.5 + 2440588 - 2451545;
@@ -360,41 +401,64 @@ const SCRIPT = `
   var showSun = function () {};
   if (timed) {
     var lat = track[0][0], lng = track[0][1], tStart = track[0][2], tFinish = track[track.length - 1][2];
-    // Scale: from a little below the horizon to the day's highest sun.
-    var noonAlt = 0;
+    // Height scale: the water line up to the day's highest sun, so a late paddle sits low in the sky.
+    var noonAlt = 10;
     for (var x = tStart - 12 * 3600000; x < tStart + 12 * 3600000; x += 10 * 60000) noonAlt = Math.max(noonAlt, sunAlt(x, lat, lng));
-    var top = Math.max(20, Math.ceil(noonAlt / 10) * 10), bottom = -15;
-    var tripLo = Infinity, tripHi = -Infinity;
-    for (var y = tStart; y <= tFinish; y += 60000) { var al = sunAlt(y, lat, lng); tripLo = Math.min(tripLo, al); tripHi = Math.max(tripHi, al); }
+    var TOP = noonAlt + 4, BOTTOM = -14;
     var sunset = nextSunset(tStart - 6 * 3600000, lat, lng);
     if (sunset && sunset < tStart - 60000) sunset = nextSunset(tStart, lat, lng);
-    var H = 100, yOf = function (alt) { return ((top - alt) / (top - bottom)) * H; };
-    var hz = yOf(0);
-    $('sun').innerHTML =
-      '<div class="info"><div id="sun-alt" class="alt"></div><div id="sun-note"></div></div>' +
-      '<div class="gauge"><svg viewBox="0 0 40 ' + H + '" preserveAspectRatio="none" aria-label="Sun height">' +
-      '<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fa3e0"/><stop offset="1" stop-color="#cfe8f7"/></linearGradient>' +
-      '<linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a35e"/><stop offset="1" stop-color="#3b3355"/></linearGradient></defs>' +
-      '<rect x="0" y="0" width="40" height="' + hz + '" fill="url(#sky)"/>' +
-      '<rect x="0" y="' + hz + '" width="40" height="' + (H - hz) + '" fill="url(#dusk)"/>' +
-      '<line x1="0" y1="' + hz + '" x2="40" y2="' + hz + '" stroke="#fff" stroke-width="0.6"/>' +
-      '<rect x="17" y="' + yOf(tripHi) + '" width="6" height="' + Math.max(0.8, yOf(tripLo) - yOf(tripHi)) + '" rx="3" fill="#fff" opacity="0.55"/>' +
-      '</svg><div id="sun-dot" class="sun-dot"></div></div>';
-    $('sun').title = 'How high the sun was. The pale bar is the range during the trip; the line is the horizon.';
-    $('sun').hidden = false;
+    var panel = $('sun');
+    panel.innerHTML = '<div class="info" id="sun-note"></div><div class="gauge" id="sun-gauge"></div>';
+    panel.title = "The sun's path across the sky during the trip, above the water line.";
+    panel.hidden = false;
     map.invalidateSize();
+    var geom = null;
+    var drawSun = function () {
+      var g = $('sun-gauge');
+      var w = g.clientWidth, h = g.clientHeight;
+      if (!w || !h) return;
+      var pad = 12;
+      var yOf = function (alt) { return ((TOP - alt) / (TOP - BOTTOM)) * h; };
+      var xOf = function (t) { return pad + ((t - tStart) / Math.max(1, tFinish - tStart)) * (w - 2 * pad); };
+      var hz = yOf(0);
+      // The sun's path, sampled every minute of the trip.
+      var pts = [];
+      var step = Math.max(60000, (tFinish - tStart) / 200);
+      for (var t = tStart; t <= tFinish + 1; t += step) pts.push(xOf(t).toFixed(1) + ',' + yOf(sunAlt(t, lat, lng)).toFixed(1));
+      pts.push(xOf(tFinish).toFixed(1) + ',' + yOf(sunAlt(tFinish, lat, lng)).toFixed(1));
+      // Water: a gently wavy surface at the horizon.
+      var wave = 'M0,' + hz.toFixed(1);
+      for (var x = 0; x <= w; x += 8) wave += ' Q' + (x + 4) + ',' + ((x / 8) % 2 === 0 ? hz - 2.2 : hz + 2.2).toFixed(1) + ' ' + (x + 8) + ',' + hz.toFixed(1);
+      wave += ' L' + (w + 8) + ',' + (g.clientHeight + 2) + ' L0,' + (g.clientHeight + 2) + ' Z';
+      g.innerHTML =
+        '<svg width="' + w + '" height="' + g.clientHeight + '" viewBox="0 0 ' + w + ' ' + g.clientHeight + '" aria-hidden="true">' +
+        '<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d8fd1"/><stop offset="1" stop-color="#cfe8f7"/></linearGradient>' +
+        '<linearGradient id="water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8fae"/><stop offset="1" stop-color="#123c52"/></linearGradient></defs>' +
+        '<rect x="0" y="0" width="' + w + '" height="' + (hz + 3) + '" fill="url(#sky)"/>' +
+        '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#fff6c2" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 4"/>' +
+        '<path d="' + wave + '" fill="url(#water)" opacity="0.93"/>' +
+        '<path d="' + wave.split(' L')[0] + '" fill="none" stroke="#e8f6ff" stroke-width="1" opacity="0.8"/>' +
+        '</svg><div id="sun-dot" class="sun-dot"></div>';
+      geom = { xOf: xOf, yOf: yOf, h: h };
+    };
     showSun = function (t) {
-      var alt = sunAlt(t, lat, lng);
-      $('sun-dot').style.top = Math.max(2, Math.min(98, yOf(alt))) + '%';
-      $('sun-alt').textContent = Math.round(alt) + '°';
+      if (!geom) drawSun();
+      if (!geom) return;
+      var dot = $('sun-dot');
+      dot.style.left = geom.xOf(Math.max(tStart, Math.min(tFinish, t))) + 'px';
+      dot.style.top = geom.yOf(sunAlt(t, lat, lng)) + 'px';
       var note;
       if (sunset && t < sunset) {
         var left = sunset - t;
         note = left < 3 * 3600000 ? fmtDur(left) + ' to sunset' : 'sunset ' + fmtTime(sunset);
-      } else note = alt < SUNSET_ALT ? 'after sunset' : '';
-      $('sun-note').innerHTML = esc(fmtTime(t)) + (note ? '<br>' + esc(note) : '');
+      } else note = sunAlt(t, lat, lng) < SUNSET_ALT ? 'after sunset' : '';
+      $('sun-note').innerHTML = '<b>' + esc(fmtTime(t)) + '</b>' + (note ? '<br>' + esc(note) : '');
+      currentSun = t;
     };
+    var currentSun = tStart;
+    drawSun();
     showSun(tStart);
+    window.addEventListener('resize', function () { geom = null; drawSun(); showSun(currentSun); });
   }
 
   // ---------- photo viewer ----------

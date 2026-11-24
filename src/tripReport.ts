@@ -48,14 +48,30 @@ function timeAt(t: Track | undefined, p: LatLng, km: number): number | undefined
   return best <= km ? time : undefined;
 }
 
+/**
+ * Fixes at least this far apart in time are used for distance and speed:
+ * summing every fix would count GPS jitter as movement.
+ */
+const STATS_SPACING_MS = 30_000;
+
 function trackStats(t: Track) {
   const f = t.fixes;
+  const timed = f.length > 1 && f[0][2] > 0 && f[f.length - 1][2] > f[0][2];
+  // Thin to one fix per STATS_SPACING_MS (keeping the last). Untimed tracks (some GPX files) use every fix.
+  let thin = f;
+  if (timed) {
+    thin = [];
+    for (const x of f) if (!thin.length || x[2] - thin[thin.length - 1][2] >= STATS_SPACING_MS) thin.push(x);
+    if (thin[thin.length - 1] !== f[f.length - 1]) thin.push(f[f.length - 1]);
+  }
   let moving = 0;
   let movingKm = 0;
-  for (let i = 1; i < f.length; i++) {
-    const dt = (f[i][2] - f[i - 1][2]) / 3_600_000;
+  let distanceKm = 0;
+  for (let i = 1; i < thin.length; i++) {
+    const km = distKm([thin[i - 1][0], thin[i - 1][1]], [thin[i][0], thin[i][1]]);
+    distanceKm += km;
+    const dt = (thin[i][2] - thin[i - 1][2]) / 3_600_000;
     if (dt <= 0 || dt > 0.5) continue; // gaps (paused, no signal) aren't moving time
-    const km = distKm([f[i - 1][0], f[i - 1][1]], [f[i][0], f[i][1]]);
     if (km / dt >= MOVING_KMH) {
       moving += dt;
       movingKm += km;
@@ -64,7 +80,7 @@ function trackStats(t: Track) {
   const start = f[0]?.[2] || undefined;
   const end = f[f.length - 1]?.[2] || undefined;
   return {
-    distanceKm: lengthKm(fixLatLng(t)),
+    distanceKm,
     start,
     end,
     totalMs: start && end ? end - start : undefined,
