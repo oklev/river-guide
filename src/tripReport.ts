@@ -7,6 +7,7 @@ import { USGS_MAX_ZOOM, USGS_TOPO_URL } from './tiles';
 import { currentObservation, observationLabel } from './observations';
 import { CATEGORIES, type LatLng, type Photo, type RiverPoint, type Route, type Track } from './types';
 import { reportHtml, type ReportData, type ReportItem } from './tripReportTemplate';
+import { isOnWater } from './osm';
 
 /**
  * Trip report: one self-contained HTML file with the map (track, planned
@@ -15,7 +16,13 @@ import { reportHtml, type ReportData, type ReportItem } from './tripReportTempla
  * internet. Open it in any browser, or send it to someone.
  */
 /** With a GPS track, a point counts as visited if the track came this close (km). */
-const POINT_NEAR_KM = 0.3; // a big river can be 300 m wide: bank access points still count
+const POINT_NEAR_KM = 0.3; // on the water: a big river can be 300 m wide
+/** …but a point on land only counts if the track came this close (km). */
+const LAND_POINT_NEAR_KM = 0.05;
+/** Without map data, these categories are assumed to be in the river. */
+const WATER_CATEGORIES = new Set(['hazard', 'rapid']);
+/** Points of interest count from 300 m wherever they are: seeing them from the water is the point. */
+const SEEN_FROM_WATER = new Set(['poi']);
 const ROUTE_POINT_NEAR_KM = 0.5;
 /** Photos taken this long before the first / after the last GPS fix still count. */
 const PHOTO_SLACK_MS = 20 * 60_000;
@@ -236,12 +243,24 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
   };
 
   // Points along the way.
-  // With tracks: only points you actually passed (so they have a time). Without: the route's points by mile.
-  const points = !o.points
-    ? []
-    : o.tracks.length
-      ? state.points.filter((p) => o.tracks.some((t) => passedBy(t, [p.lat, p.lng], POINT_NEAR_KM)))
-      : state.points.filter((p) => nearAny(lines, [p.lat, p.lng], ROUTE_POINT_NEAR_KM));
+  // With tracks: only points you actually passed (so they have a time): within 300 m if
+  // the point is on the water or a point of interest, 50 m otherwise (land: ramps,
+  // parking, restrooms). Without tracks: the route's points by mile.
+  let points: RiverPoint[] = [];
+  if (o.points && o.tracks.length) {
+    for (const p of state.points) {
+      const at: LatLng = [p.lat, p.lng];
+      if (!o.tracks.some((t) => passedBy(t, at, POINT_NEAR_KM))) continue;
+      if (o.tracks.some((t) => passedBy(t, at, LAND_POINT_NEAR_KM))) {
+        points.push(p);
+        continue;
+      }
+      const water = SEEN_FROM_WATER.has(p.category) || ((await isOnWater(at)) ?? WATER_CATEGORIES.has(p.category));
+      if (water) points.push(p);
+    }
+  } else if (o.points) {
+    points = state.points.filter((p) => nearAny(lines, [p.lat, p.lng], ROUTE_POINT_NEAR_KM));
+  }
   const pointById = new Map(state.points.map((p) => [p.id, p]));
   const wanted = new Set(o.photoIds);
   const photos = state.photos.filter((ph) => wanted.has(ph.id)).sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));

@@ -258,3 +258,100 @@ export async function outdatedOsmCount(keys: string[]): Promise<number> {
 export const clearOsm = () => clearStore('osm');
 export const deleteOsmTiles = (keys: string[]) => Promise.all(keys.map((k) => del('osm', k)));
 export const osmTileCount = () => count('osm');
+
+// ---------- is a place on the water? ----------
+const waterTiles = new Map<string, Promise<ArrayBuffer | null>>();
+let templatePromise: Promise<string> | null = null;
+
+/** The z14 tile bytes: from saved offline data, else downloaded (kept for this session). */
+function tileBytes(t: TileCoord): Promise<ArrayBuffer | null> {
+  const key = `${t.z}/${t.x}/${t.y}`;
+  let p = waterTiles.get(key);
+  if (!p) {
+    p = (async () => {
+      const stored = await get('osm', key);
+      if (stored?.raw) return stored.raw.byteLength ? stored.raw : null;
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 15_000);
+      try {
+        templatePromise ??= tileTemplate(ctl.signal).catch((e) => {
+          templatePromise = null;
+          throw e;
+        });
+        const url = (await templatePromise).replace('{z}', String(t.z)).replace('{x}', String(t.x)).replace('{y}', String(t.y));
+        return await fetchTile(url, ctl.signal);
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    p.catch(() => waterTiles.delete(key)); // offline: try again another time
+    waterTiles.set(key, p);
+  }
+  return p;
+}
+
+/** Streams mapped only as a line count as water this close to the line (m). */
+const STREAM_HALF_WIDTH_M = 15;
+
+/**
+ * Is this place on water (a river, lake, or within a few metres of a stream
+ * line), going by OpenStreetMap? Undefined if the map data can't be had
+ * (offline and not saved for this area).
+ */
+export async function isOnWater([lat, lng]: LatLng): Promise<boolean | undefined> {
+  const z = OSM_ZOOM;
+  const n = 2 ** z;
+  const fx = ((lng + 180) / 360) * n;
+  const fy = ((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * n;
+  const t = { z, x: Math.floor(fx), y: Math.floor(fy) };
+  let buf: ArrayBuffer | null;
+  try {
+    buf = await tileBytes(t);
+  } catch {
+    return undefined;
+  }
+  if (!buf) return false;
+  const vt = new VectorTile(new PbfReader(new Uint8Array(buf)));
+  // Polygons: even-odd over all rings handles holes (islands) too.
+  const water = vt.layers.water;
+  if (water) {
+    const px = (fx - t.x) * water.extent;
+    const py = (fy - t.y) * water.extent;
+    for (let i = 0; i < water.length; i++) {
+      const f = water.feature(i);
+      if (f.type !== 3) continue;
+      let inside = false;
+      for (const ring of f.loadGeometry()) {
+        for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+          const A = ring[a];
+          const B = ring[b];
+          if (A.y > py !== B.y > py && px < ((B.x - A.x) * (py - A.y)) / (B.y - A.y) + A.x) inside = !inside;
+        }
+      }
+      if (inside) return true;
+    }
+  }
+  // Lines: small streams without a mapped water area.
+  const ways = vt.layers.waterway;
+  if (ways) {
+    const px = (fx - t.x) * ways.extent;
+    const py = (fy - t.y) * ways.extent;
+    const metresPerUnit = (40_075_016 * Math.cos((lat * Math.PI) / 180)) / n / ways.extent;
+    const limit = STREAM_HALF_WIDTH_M / metresPerUnit;
+    for (let i = 0; i < ways.length; i++) {
+      const f = ways.feature(i);
+      if (f.type !== 2) continue;
+      for (const line of f.loadGeometry()) {
+        for (let k = 1; k < line.length; k++) {
+          const A = line[k - 1];
+          const B = line[k];
+          const dx = B.x - A.x;
+          const dy = B.y - A.y;
+          const u = Math.max(0, Math.min(1, ((px - A.x) * dx + (py - A.y) * dy) / (dx * dx + dy * dy || 1)));
+          if (Math.hypot(px - (A.x + u * dx), py - (A.y + u * dy)) <= limit) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
