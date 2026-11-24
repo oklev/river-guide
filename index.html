@@ -276,6 +276,49 @@
         </form>
       </dialog>
 
+      <dialog id="report-dialog" class="editor report-dialog">
+        <form method="dialog" class="dialog-body">
+          <h2>Trip report</h2>
+          <label>Title <input id="rep-title" autocomplete="off" /></label>
+          <label>Description <textarea id="rep-subtitle" rows="2"></textarea></label>
+          <fieldset id="rep-route-box">
+            <legend>Planned route</legend>
+            <label class="check-row"><input id="rep-route" type="checkbox" checked /> Show the planned route</label>
+            <div class="footer-row">
+              <button type="button" id="rep-route-edit" class="btn small">Adjust line for this report…</button>
+              <button type="button" id="rep-route-reset" class="link small" hidden>Reset to the saved route</button>
+            </div>
+            <p id="rep-route-note" class="muted small" hidden>Adjusted for this report only. Your saved route hasn't changed.</p>
+          </fieldset>
+          <fieldset>
+            <legend>GPS tracks</legend>
+            <div id="rep-tracks" class="rep-list"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Photos <span id="rep-photo-count" class="muted"></span></legend>
+            <div class="footer-row">
+              <button type="button" id="rep-photos-all" class="link small">Select all</button>
+              <button type="button" id="rep-photos-none" class="link small">Select none</button>
+            </div>
+            <div id="rep-photos" class="credit-thumbs"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Show</legend>
+            <label class="check-row"><input id="rep-points" type="checkbox" checked /> Points along the way</label>
+            <label class="check-row"><input id="rep-stats" type="checkbox" checked /> Trip stats (distance, time, speed)</label>
+            <label class="check-row"><input id="rep-speed" type="checkbox" checked /> Colour the GPS track by speed</label>
+            <label class="check-row"><input id="rep-sun" type="checkbox" checked /> Sun over the map</label>
+            <label class="check-row"><input id="rep-legend" type="checkbox" checked /> Map legend</label>
+          </fieldset>
+          <div id="rep-status" class="small" role="status"></div>
+          <div class="editor-actions">
+            <button value="cancel" class="btn">Cancel</button>
+            <span class="spacer"></span>
+            <button type="button" id="rep-save" class="btn primary">Save report</button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog id="credit-dialog" class="editor">
         <form method="dialog" class="dialog-body">
           <h2>Who took these?</h2>

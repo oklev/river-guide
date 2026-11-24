@@ -54,7 +54,7 @@ function timeAt(t: Track | undefined, p: LatLng, km: number): number | undefined
  */
 const STATS_SPACING_MS = 30_000;
 
-function trackStats(t: Track) {
+export function trackStats(t: Track) {
   const f = t.fixes;
   const timed = f.length > 1 && f[0][2] > 0 && f[f.length - 1][2] > f[0][2];
   // Thin to one fix per STATS_SPACING_MS (keeping the last). Untimed tracks (some GPX files) use every fix.
@@ -96,38 +96,110 @@ function caption(p: Photo, points: Map<string, RiverPoint>): { title: string; te
   return { title: pt.name, text: [pt.description, by].filter(Boolean).join(' · ') };
 }
 
+const safeName = (s: string) => s.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'trip';
+
 export interface ReportSource {
   route?: Route;
   track?: Track;
 }
 
-export async function buildReport({ route, track }: ReportSource): Promise<ReportData> {
-  const line: LatLng[] = route?.coords ?? (track ? fixLatLng(track) : []);
-  const near = (p: LatLng, km: number) => {
-    if (track && (locateOnLine(fixLatLng(track), p)?.offKm ?? Infinity) <= km) return true;
-    return !!route && (locateOnLine(route.coords, p)?.offKm ?? Infinity) <= km;
+/** What goes into a report: chosen in the report dialog. */
+export interface ReportOptions {
+  title: string;
+  subtitle: string;
+  /** The planned route line (possibly adjusted just for this report), or none. */
+  route?: { coords: LatLng[]; color: string };
+  tracks: Track[];
+  photoIds: string[];
+  points: boolean;
+  show: ReportData['show'];
+}
+
+const usable = (t: Track) => !t.recording && t.fixes.length > 1;
+const startOf = (t: Track) => t.fixes[0]?.[2] ?? 0;
+const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
+
+/** Tracks worth offering for a report, newest first, and which to tick by default. */
+export function candidateTracks({ route, track }: ReportSource): { tracks: Track[]; selected: Track[] } {
+  let tracks = state.tracks.filter(usable);
+  if (route) tracks = tracks.filter((t) => t === track || trackAlong(route, t, 0.5));
+  else if (track) tracks = tracks.filter((t) => t === track || (startOf(t) > 0 && sameDay(startOf(t), startOf(track))));
+  tracks.sort((a, b) => startOf(b) - startOf(a));
+  const selected = track ? [track] : tracks.slice(0, 1);
+  return { tracks, selected };
+}
+
+function nearAny(lines: LatLng[][], p: LatLng, km: number) {
+  return lines.some((l) => l.length > 1 && (locateOnLine(l, p)?.offKm ?? Infinity) <= km);
+}
+
+/**
+ * Photos worth offering: ones taken during the chosen tracks, plus ones along
+ * the route. Ticked by default: the trip's photos (or, with no track, the
+ * route's).
+ */
+export function candidatePhotos(routeCoords: LatLng[] | undefined, tracks: Track[]): { photos: Photo[]; selected: Set<string> } {
+  const lines = [...tracks.map(fixLatLng), ...(routeCoords ? [routeCoords] : [])];
+  const windows = tracks.map((t) => trackStats(t)).filter((s) => s.start && s.end);
+  const during = (ph: Photo) =>
+    !!ph.takenAt && windows.some((w) => ph.takenAt! >= w.start! - PHOTO_SLACK_MS && ph.takenAt! <= w.end! + PHOTO_SLACK_MS);
+  const pointIds = new Set(state.points.filter((p) => nearAny(lines, [p.lat, p.lng], ROUTE_POINT_NEAR_KM)).map((p) => p.id));
+  const along = (ph: Photo) =>
+    (!!ph.pointId && pointIds.has(ph.pointId)) || (ph.lat != null && nearAny(lines, [ph.lat, ph.lng!], ROUTE_POINT_NEAR_KM));
+  const photos = state.photos
+    .filter((ph) => (during(ph) && (ph.lat == null || nearAny(lines, [ph.lat, ph.lng!], 2))) || along(ph))
+    .sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
+  const selected = new Set(photos.filter((ph) => (windows.length ? during(ph) : along(ph))).map((ph) => ph.id));
+  return { photos, selected };
+}
+
+/** Sensible defaults for the dialog. */
+export function defaultOptions(src: ReportSource): ReportOptions {
+  const { selected: tracks } = candidateTracks(src);
+  const route = src.route ?? (src.track ? routeAlong(src.track) : undefined);
+  const { selected } = candidatePhotos(route?.coords, tracks);
+  return {
+    title: route?.name ?? src.track?.name ?? 'Trip',
+    subtitle: route?.description ?? '',
+    route: route ? { coords: route.coords, color: route.color } : undefined,
+    tracks,
+    photoIds: [...selected],
+    points: true,
+    show: { stats: true, sun: true, speed: true, legend: true },
   };
+}
+
+export async function buildReport(o: ReportOptions): Promise<ReportData> {
+  const trackLines = o.tracks.map(fixLatLng);
+  const routeCoords = o.route?.coords;
+  const line: LatLng[] = routeCoords ?? trackLines[0] ?? [];
+  const lines = [...trackLines, ...(routeCoords ? [routeCoords] : [])];
   const mileOf = (p: LatLng) => {
     const loc = locateOnLine(line, p);
     return loc && loc.offKm <= 2 ? loc.alongKm / KM_PER_MI : undefined;
   };
+  /** Time a chosen track passed closest to a place. */
+  const timeNear = (p: LatLng) => {
+    for (const t of o.tracks) {
+      const time = timeAt(t, p, POINT_NEAR_KM);
+      if (time) return time;
+    }
+    return undefined;
+  };
 
   // Points along the way.
-  const points = state.points.filter((p) => near([p.lat, p.lng], track ? POINT_NEAR_KM : ROUTE_POINT_NEAR_KM));
+  const points = o.points
+    ? state.points.filter((p) => nearAny(lines, [p.lat, p.lng], o.tracks.length ? POINT_NEAR_KM : ROUTE_POINT_NEAR_KM))
+    : [];
   const pointById = new Map(state.points.map((p) => [p.id, p]));
+  const wanted = new Set(o.photoIds);
+  const photos = state.photos.filter((ph) => wanted.has(ph.id)).sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
 
-  // Photos: with a track, the ones taken during the trip; without, the ones on the route's points.
-  const stats = track ? trackStats(track) : undefined;
-  const ids = new Set(points.map((p) => p.id));
-  const photos = state.photos
-    .filter((ph) => {
-      if (stats?.start && stats.end && ph.takenAt) {
-        if (ph.takenAt < stats.start - PHOTO_SLACK_MS || ph.takenAt > stats.end + PHOTO_SLACK_MS) return false;
-        return ph.lat == null || near([ph.lat, ph.lng!], 2);
-      }
-      return (ph.pointId && ids.has(ph.pointId)) || (ph.lat != null && near([ph.lat, ph.lng!], ROUTE_POINT_NEAR_KM));
-    })
-    .sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
+  // Combined stats over all chosen tracks.
+  const all = o.tracks.map(trackStats);
+  const sum = (f: (s: ReturnType<typeof trackStats>) => number | undefined) => all.reduce((n, s) => n + (f(s) ?? 0), 0);
+  const movingMs = sum((s) => s.movingMs);
+  const movingKm = all.reduce((n, s) => n + (s.avgKmh ? (s.avgKmh * s.movingMs) / 3_600_000 : 0), 0);
 
   const items: ReportItem[] = [];
   const photoData: ReportData['photos'] = [];
@@ -136,15 +208,7 @@ export async function buildReport({ route, track }: ReportSource): Promise<Repor
     const { title, text } = caption(ph, pointById);
     const at: LatLng | undefined = ph.lat != null ? [ph.lat, ph.lng!] : undefined;
     photoData.push({ src: await blobToDataUrl(full?.blob ?? ph.thumb), panorama: !!ph.panorama });
-    items.push({
-      kind: 'photo',
-      title,
-      text,
-      time: ph.takenAt,
-      mile: at ? mileOf(at) : undefined,
-      at,
-      photo: photoData.length - 1,
-    });
+    items.push({ kind: 'photo', title, text, time: ph.takenAt, mile: at ? mileOf(at) : undefined, at, photo: photoData.length - 1 });
   }
   for (const p of points) {
     // Points with their own photo in the report are already covered by that photo.
@@ -157,14 +221,16 @@ export async function buildReport({ route, track }: ReportSource): Promise<Repor
       category: CATEGORIES[p.category]?.label ?? p.category,
       icon: CATEGORIES[p.category]?.icon,
       color: CATEGORIES[p.category]?.color,
-      time: timeAt(track, [p.lat, p.lng], POINT_NEAR_KM),
+      time: timeNear([p.lat, p.lng]),
       mile: p.riverMile ?? mileOf([p.lat, p.lng]),
       at: [p.lat, p.lng],
     });
   }
-  if (track?.fixes.length) {
-    const first = track.fixes[0];
-    const last = track.fixes[track.fixes.length - 1];
+  const ordered = [...o.tracks].sort((a, b) => startOf(a) - startOf(b));
+  const first = ordered[0]?.fixes[0];
+  const lastTrack = ordered[ordered.length - 1];
+  const last = lastTrack?.fixes[lastTrack.fixes.length - 1];
+  if (first && last) {
     items.push({ kind: 'start', title: 'Start', text: '', time: first[2] || undefined, mile: mileOf([first[0], first[1]]), at: [first[0], first[1]] });
     items.push({ kind: 'finish', title: 'Finish', text: '', time: last[2] || undefined, mile: mileOf([last[0], last[1]]), at: [last[0], last[1]] });
   }
@@ -176,43 +242,37 @@ export async function buildReport({ route, track }: ReportSource): Promise<Repor
       (a.time != null && b.time != null ? a.time - b.time : (a.mile ?? Infinity) - (b.mile ?? Infinity)),
   );
 
-  // A thinned track keeps the file small without losing its shape.
-  const step = track ? Math.max(1, Math.ceil(track.fixes.length / MAX_TRACK_POINTS)) : 1;
-  // [lat, lng, time ms (0 if unknown)]: times drive the speed dots, sun gauge and hover.
-  const trackLine: [number, number, number][] = track
-    ? track.fixes.filter((_, i, a) => i % step === 0 || i === a.length - 1).map((f) => [f[0], f[1], f[2] || 0])
-    : [];
+  // Thinned tracks keep the file small without losing their shape.
+  // [lat, lng, time ms (0 if unknown)]: times drive the speed colours, sun strip and hover.
+  const total = ordered.reduce((n, t) => n + t.fixes.length, 0);
+  const step = Math.max(1, Math.ceil(total / MAX_TRACK_POINTS));
+  const tracks = ordered.map((t) =>
+    t.fixes.filter((_, i, a) => i % step === 0 || i === a.length - 1).map((f) => [f[0], f[1], f[2] || 0] as [number, number, number]),
+  );
 
-  const dateOf = stats?.start ?? photos[0]?.takenAt ?? (route ? Date.parse(route.updatedAt) : Date.now());
+  const starts = all.map((s) => s.start).filter((x): x is number => !!x);
+  const dateOf = starts.length ? Math.min(...starts) : (photos[0]?.takenAt ?? Date.now());
   return {
-    title: route?.name ?? track?.name ?? 'Trip',
-    subtitle: route?.description ?? '',
+    title: o.title,
+    subtitle: o.subtitle,
     date: dateOf,
     stats: {
-      distanceMi: stats ? stats.distanceKm / KM_PER_MI : route ? lengthKm(route.coords) / KM_PER_MI : undefined,
-      totalMs: stats?.totalMs,
-      movingMs: stats?.movingMs || undefined,
-      avgMph: stats?.avgKmh ? stats.avgKmh / KM_PER_MI : undefined,
+      distanceMi: o.tracks.length ? sum((s) => s.distanceKm) / KM_PER_MI : routeCoords ? lengthKm(routeCoords) / KM_PER_MI : undefined,
+      totalMs: sum((s) => s.totalMs) || undefined,
+      movingMs: movingMs || undefined,
+      avgMph: movingMs ? movingKm / (movingMs / 3_600_000) / KM_PER_MI : undefined,
       photos: photos.length,
       points: points.length,
     },
-    route: route?.coords ?? [],
-    routeColor: route?.color ?? '#1565c0',
-    track: trackLine,
+    route: routeCoords ?? [],
+    routeColor: o.route?.color ?? '#1565c0',
+    tracks,
     items,
     photos: photoData,
+    show: o.show,
     tiles: { url: USGS_TOPO_URL, maxNativeZoom: USGS_MAX_ZOOM, attribution: 'USGS The National Map' },
     generated: Date.now(),
   };
-}
-
-const safeName = (s: string) => s.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'trip';
-
-/** The most recent finished track along a route, if any. */
-export function latestTrackAlong(r: Route): Track | undefined {
-  return state.tracks
-    .filter((t) => !t.recording && t.fixes.length > 1 && trackAlong(r, t, 0.5))
-    .sort((a, b) => (b.fixes[0]?.[2] ?? 0) - (a.fixes[0]?.[2] ?? 0))[0];
 }
 
 /** The route a track follows, if any. */
@@ -220,8 +280,8 @@ export function routeAlong(t: Track): Route | undefined {
   return state.routes.find((r) => trackAlong(r, t, 0.5));
 }
 
-export async function exportTripReport(src: ReportSource) {
-  const data = await buildReport(src);
+export async function exportTripReport(o: ReportOptions) {
+  const data = await buildReport(o);
   const html = await reportHtml(data);
   await saveFile(`${safeName(data.title)}-trip-report.html`, html, 'text/html');
 }

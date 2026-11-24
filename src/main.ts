@@ -20,6 +20,7 @@ import { initMyLocation } from './myLocation';
 import { initSync, setOnReceived } from './sync';
 import { initSyncUi } from './sync/ui';
 import { initPhotosPicker } from './sync/photosPicker';
+import { initReportDialog } from './reportDialog';
 import { $, prefs } from './ui';
 
 initOsmLayer();
@@ -136,3 +137,4 @@ setOnReceived(async () => {
 initSync();
 initSyncUi();
 initPhotosPicker();
+initReportDialog();

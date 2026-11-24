@@ -44,7 +44,7 @@ function popupHtml(t: Track) {
     <div class="popup-actions">
       <button class="btn small" data-track-action="rename" data-id="${t.id}">Rename</button>
       <button class="btn small" data-track-action="route" data-id="${t.id}">Make route</button>
-      <button class="btn small" data-track-action="report" data-id="${t.id}">Trip report</button>
+      <button class="btn small" data-track-action="report" data-id="${t.id}">Trip report…</button>
       ${googleConfigured() ? `<button class="btn small" data-track-action="gphotos" data-id="${t.id}">Add Google Photos</button>` : ''}
       <button class="btn small" data-track-action="gpx" data-id="${t.id}">Export GPX</button>
       <button class="btn small danger" data-track-action="delete" data-id="${t.id}">Delete</button>
@@ -391,9 +391,8 @@ export function initTracks() {
       }
       case 'report': {
         if (t.recording) return alert('Stop recording first, then make the trip report.');
-        map.closePopup();
-        const { exportTripReport, routeAlong } = await import('./tripReport');
-        return exportTripReport({ track: t, route: routeAlong(t) }).catch((err) => alert(`Couldn't make the trip report: ${(err as Error).message}`));
+        const { openReportDialog } = await import('./reportDialog');
+        return openReportDialog({ track: t });
       }
       case 'gpx':
         return saveFile(`${t.name.replace(/[^\w.-]+/g, '_')}.gpx`, toGpx(t), 'application/gpx+xml');

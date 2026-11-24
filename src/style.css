@@ -419,3 +419,11 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 .credit-thumbs img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .credit-thumbs button[aria-pressed="false"] { border-color: transparent; opacity: 0.35; }
 .credit-thumbs button[aria-pressed="false"]::after { content: '✕'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #fff; text-shadow: 0 1px 3px #000; }
+
+/* ---------- trip report dialog ---------- */
+.report-dialog .dialog-body { max-height: min(86dvh, 860px); overflow: auto; }
+.report-dialog fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.report-dialog legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.report-dialog fieldset[hidden] { display: none; }
+.rep-list { display: flex; flex-direction: column; gap: 2px; }
+.rep-list .muted { font-size: 12px; }

@@ -29,8 +29,10 @@ export interface ReportData {
   };
   route: LatLng[];
   routeColor: string;
-  /** [lat, lng, time ms (0 if unknown)] */
-  track: [number, number, number][];
+  /** Each GPS track: [lat, lng, time ms (0 if unknown)][] */
+  tracks: [number, number, number][][];
+  /** Which optional parts to show. */
+  show: { stats: boolean; sun: boolean; speed: boolean; legend: boolean };
   items: ReportItem[];
   photos: { src: string; panorama: boolean }[];
   tiles: { url: string; maxNativeZoom: number; attribution: string };
@@ -169,6 +171,7 @@ const SCRIPT = `
   if (s.movingMs) stats.push([fmtDur(s.movingMs), 'moving']);
   if (s.avgMph) stats.push([s.avgMph.toFixed(1) + ' mph', 'average moving speed']);
   if (s.photos) stats.push([String(s.photos), s.photos === 1 ? 'photo' : 'photos']);
+  if (d.show && !d.show.stats) stats = [];
   stats.forEach(function (x) {
     var el = document.createElement('div'); el.className = 'stat';
     var b = document.createElement('b'); b.textContent = x[0];
@@ -181,18 +184,21 @@ const SCRIPT = `
   var map = L.map('map', { scrollWheelZoom: true });
   L.tileLayer(d.tiles.url, { maxNativeZoom: d.tiles.maxNativeZoom, maxZoom: 18, attribution: d.tiles.attribution }).addTo(map);
   var bounds = L.latLngBounds([]);
-  var track = d.track;
-  var trackLL = track.map(function (p) { return [p[0], p[1]]; });
-  var timed = track.length > 1 && track[0][2] > 0 && track[track.length - 1][2] > track[0][2];
+  var show = d.show || { stats: true, sun: true, speed: true, legend: true };
+  // Each GPS track: its fixes [lat, lng, time] and whether it has usable times.
+  var segs = (d.tracks || []).filter(function (t) { return t.length > 1; }).map(function (t) {
+    return { pts: t, ll: t.map(function (p) { return [p[0], p[1]]; }), timed: t[0][2] > 0 && t[t.length - 1][2] > t[0][2] };
+  });
+  var anyTimed = segs.some(function (s) { return s.timed; });
   if (d.route.length) { var r = L.polyline(d.route, { color: d.routeColor, weight: 4, opacity: 0.5, dashArray: '8 8' }).addTo(map); bounds.extend(r.getBounds()); }
   var TRACK_COLOR = '#37474f';
-  if (track.length) bounds.extend(L.latLngBounds(trackLL));
-  if (track.length && !timed) L.polyline(trackLL, { color: TRACK_COLOR, weight: 3, opacity: 0.85 }).addTo(map);
+  segs.forEach(function (s) { bounds.extend(L.latLngBounds(s.ll)); });
 
-  // ---------- speed: the track split wherever the pace changed ----------
+  // ---------- speed: each track split wherever the pace changed ----------
   // Slow purple to fast yellow: stands out on blue water and the topo map.
   var RAMP = ['#5e35b1', '#c2185b', '#f4511e', '#ffb300', '#ffee58'];
   var STOP_COLOR = '#9e9e9e';
+  var STOP_MPH = 0.4;
   function mix(a, b, f) {
     var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
     var ch = function (sh) { return Math.round(((pa >> sh) & 255) * (1 - f) + ((pb >> sh) & 255) * f); };
@@ -203,9 +209,7 @@ const SCRIPT = `
     var i = Math.min(RAMP.length - 2, Math.floor(f));
     return mix(RAMP[i], RAMP[i + 1], f - i);
   }
-  var STOP_MPH = 0.4;
-  var runs = [];
-  if (timed) {
+  function computeRuns(track) {
     // Distance along a stretch, measured between fixes at least 30 s apart: adding up every
     // fix would count GPS jitter as movement (standing still would look like ~2 mph).
     var runKm = function (a, b) {
@@ -225,7 +229,7 @@ const SCRIPT = `
       smooth.push(dt > 0 ? (distKm(track[lo], track[hi]) * MI_PER_KM) / (dt / 3600000) : 0);
     }
     // Grow a run while the pace stays within a band of its average; start a new one when it changes.
-    var start = 0;
+    var runs = [], start = 0;
     for (var i = 1; i < track.length; i++) {
       var avg = 0, nAvg = 0;
       for (var j = start; j < i; j++) { avg += smooth[j]; nAvg++; }
@@ -255,25 +259,41 @@ const SCRIPT = `
         k--;
       }
     }
-    var moving = runs.filter(function (x) { return x.mph >= STOP_MPH; });
-    var lo2 = Math.min.apply(null, moving.map(function (x) { return x.mph; }));
-    var hi2 = Math.max.apply(null, moving.map(function (x) { return x.mph; }));
-    var speedRange = moving.length ? [lo2, hi2] : null;
-    runs.forEach(function (x) {
-      var stopped = x.mph < STOP_MPH;
-      var color = stopped ? STOP_COLOR : rampColor(hi2 - lo2 < 0.1 ? 0.5 : (x.mph - lo2) / (hi2 - lo2));
-      var pts = trackLL.slice(x.a, x.b + 1);
-      x.halo = L.polyline(pts, { color: '#1b262c', weight: 7.5, opacity: 0.85, interactive: false }).addTo(map); // dark outline
-      x.line = L.polyline(pts, { color: color, weight: 4.5, opacity: 1, interactive: false }).addTo(map);
-      // A wide invisible copy makes the section easy to hover.
-      x.hit = L.polyline(pts, { weight: 22, opacity: 0 }).addTo(map);
-      var label = (stopped ? 'Stopped' : x.mph.toFixed(1) + ' mph') + ' · ' + fmtDur(x.ms) +
-        (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(track[x.a][2]) + '–' + fmtTime(track[x.b][2]);
-      x.hit.bindTooltip(label, { sticky: true, direction: 'top', offset: [0, -10] });
-      x.hit.on('mouseover', function () { x.line.setStyle({ weight: 7 }); x.halo.setStyle({ weight: 10 }); });
-      x.hit.on('mouseout', function () { x.line.setStyle({ weight: 4.5 }); x.halo.setStyle({ weight: 7.5 }); });
-    });
+    return runs;
   }
+  // Every hoverable piece of track: { seg, line, hit } (one per speed section, or one per track).
+  var pieces = [];
+  var speedRange = null, anyStops = false;
+  var useSpeed = show.speed && anyTimed;
+  if (useSpeed) {
+    segs.forEach(function (s) { if (s.timed) s.runs = computeRuns(s.pts); });
+    var moving = [];
+    segs.forEach(function (s) { (s.runs || []).forEach(function (x) { if (x.mph >= STOP_MPH) moving.push(x.mph); else anyStops = true; }); });
+    if (moving.length) speedRange = [Math.min.apply(null, moving), Math.max.apply(null, moving)];
+  }
+  segs.forEach(function (s) {
+    if (!s.runs) {
+      var line = L.polyline(s.ll, { color: TRACK_COLOR, weight: 3, opacity: 0.85, interactive: false }).addTo(map);
+      pieces.push({ seg: s, line: line, hit: L.polyline(s.ll, { weight: 22, opacity: 0 }).addTo(map) });
+      return;
+    }
+    s.runs.forEach(function (x) {
+      var stopped = x.mph < STOP_MPH;
+      var lo = speedRange ? speedRange[0] : 0, hi = speedRange ? speedRange[1] : 0;
+      var color = stopped ? STOP_COLOR : rampColor(hi - lo < 0.1 ? 0.5 : (x.mph - lo) / (hi - lo));
+      var pts = s.ll.slice(x.a, x.b + 1);
+      var halo = L.polyline(pts, { color: '#1b262c', weight: 7.5, opacity: 0.85, interactive: false }).addTo(map); // dark outline
+      var line = L.polyline(pts, { color: color, weight: 4.5, opacity: 1, interactive: false }).addTo(map);
+      // A wide invisible copy makes the section easy to hover.
+      var hit = L.polyline(pts, { weight: 22, opacity: 0 }).addTo(map);
+      var label = (stopped ? 'Stopped' : x.mph.toFixed(1) + ' mph') + ' · ' + fmtDur(x.ms) +
+        (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(s.pts[x.a][2]) + '–' + fmtTime(s.pts[x.b][2]);
+      hit.bindTooltip(label, { sticky: true, direction: 'top', offset: [0, -10] });
+      hit.on('mouseover', function () { line.setStyle({ weight: 7 }); halo.setStyle({ weight: 10 }); });
+      hit.on('mouseout', function () { line.setStyle({ weight: 4.5 }); halo.setStyle({ weight: 7.5 }); });
+      pieces.push({ seg: s, line: line, hit: hit });
+    });
+  });
 
   // ---------- legend ----------
   var legend = L.control({ position: 'bottomleft' });
@@ -281,16 +301,16 @@ const SCRIPT = `
     var div = L.DomUtil.create('div', 'legend');
     var h = '';
     if (d.route.length) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + esc(d.routeColor) + '" stroke-width="3" stroke-dasharray="6 4" opacity="0.7"/></svg>Planned route</div>';
-    if (track.length && !timed) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + TRACK_COLOR + '" stroke-width="2.5"/></svg>GPS track</div>';
-    if (timed && speedRange) {
+    if (segs.length && !speedRange) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + TRACK_COLOR + '" stroke-width="2.5"/></svg>GPS track</div>';
+    if (speedRange) {
       h += '<div>GPS track, by speed</div><div class="ramp" style="background:linear-gradient(90deg,' + RAMP.join(',') + ')"></div>' +
         '<div class="scale"><span>' + speedRange[0].toFixed(1) + '</span><span>' + speedRange[1].toFixed(1) + ' mph</span></div>';
-      if (runs.some(function (x) { return x.mph < STOP_MPH; })) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + STOP_COLOR + '" stroke-width="4"/></svg>Stopped</div>';
+      if (anyStops) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + STOP_COLOR + '" stroke-width="4"/></svg>Stopped</div>';
     }
     div.innerHTML = h;
     return div;
   };
-  if (d.route.length || track.length) legend.addTo(map);
+  if (show.legend && (d.route.length || segs.length)) legend.addTo(map);
 
   // ---------- markers & timeline ----------
   var markers = [];
@@ -339,20 +359,24 @@ const SCRIPT = `
   }
 
   // ---------- hovering the track: follow along in the timeline ----------
-  if (timed) {
-    var hover = L.circleMarker(trackLL[0], { radius: 6, color: '#fff', weight: 2, fillColor: TRACK_COLOR, fillOpacity: 1, interactive: false });
+  if (anyTimed) {
+    var hover = L.circleMarker([0, 0], { radius: 6, color: '#fff', weight: 2, fillColor: TRACK_COLOR, fillOpacity: 1, interactive: false });
     var nearIdx = -1, last = 0;
     var follow = function (e) {
       var now = Date.now();
       if (now - last < 60) return;
       last = now;
-      var best = 0, bd = Infinity;
-      for (var i = 0; i < track.length; i++) {
-        var dd = Math.pow(track[i][0] - e.latlng.lat, 2) + Math.pow((track[i][1] - e.latlng.lng) * Math.cos(e.latlng.lat * RAD), 2);
-        if (dd < bd) { bd = dd; best = i; }
-      }
-      var t = track[best][2];
-      hover.setLatLng(trackLL[best]).addTo(map);
+      var best = null, bd = Infinity;
+      segs.forEach(function (s) {
+        if (!s.timed) return;
+        for (var i = 0; i < s.pts.length; i++) {
+          var dd = Math.pow(s.pts[i][0] - e.latlng.lat, 2) + Math.pow((s.pts[i][1] - e.latlng.lng) * Math.cos(e.latlng.lat * RAD), 2);
+          if (dd < bd) { bd = dd; best = s.pts[i]; }
+        }
+      });
+      if (!best) return;
+      var t = best[2];
+      hover.setLatLng([best[0], best[1]]).addTo(map);
       showSun(t);
       // The timeline entry closest in time (a photo or point from that part of the trip).
       var ni = -1, nd = Infinity;
@@ -367,10 +391,11 @@ const SCRIPT = `
         if (lis[ni]) { lis[ni].classList.add('near'); lis[ni].scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       }
     };
-    runs.forEach(function (x) {
-      x.hit.on('mousemove', follow);
-      x.hit.on('click', follow);
-      x.hit.on('mouseout', function () { hover.remove(); });
+    pieces.forEach(function (p) {
+      if (!p.seg.timed) return;
+      p.hit.on('mousemove', follow);
+      p.hit.on('click', follow);
+      p.hit.on('mouseout', function () { hover.remove(); });
     });
   }
 
@@ -399,8 +424,13 @@ const SCRIPT = `
     return null;
   }
   var showSun = function () {};
-  if (timed) {
-    var lat = track[0][0], lng = track[0][1], tStart = track[0][2], tFinish = track[track.length - 1][2];
+  if (show.sun && anyTimed) {
+    // Across all chosen tracks; tracks on different days use the first one.
+    var timedSegs = segs.filter(function (s) { return s.timed; }).sort(function (a, b) { return a.pts[0][2] - b.pts[0][2]; });
+    var firstSeg = timedSegs[0];
+    var lat = firstSeg.pts[0][0], lng = firstSeg.pts[0][1], tStart = firstSeg.pts[0][2];
+    var tFinish = Math.max.apply(null, timedSegs.map(function (s) { return s.pts[s.pts.length - 1][2]; }));
+    if (tFinish - tStart > 20 * 3600000) tFinish = firstSeg.pts[firstSeg.pts.length - 1][2];
     // Height scale: the water line up to the day's highest sun, so a late paddle sits low in the sky.
     var noonAlt = 10;
     for (var x = tStart - 12 * 3600000; x < tStart + 12 * 3600000; x += 10 * 60000) noonAlt = Math.max(noonAlt, sunAlt(x, lat, lng));
