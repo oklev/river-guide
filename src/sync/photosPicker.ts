@@ -3,7 +3,8 @@ import { map } from '../map';
 import { importFiles, toast } from '../photos';
 import { $ } from '../ui';
 import { googleConfigured, SCOPES } from './config';
-import { getToken } from './googleAuth';
+import { getToken, openExternal } from './googleAuth';
+import { isNative } from '../platform';
 
 /**
  * "Import from Google Photos": opens Google's photo picker, then imports the
@@ -33,13 +34,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** "5s" -> 5000 */
 const dur = (s: string | undefined, fallback: number) => (s ? Math.round(parseFloat(s) * 1000) : fallback);
 
-async function pickAndImport() {
+async function pickAndImport(win: Window | null) {
   // From a click: may show Google's sign-in/consent for the Photos permission.
   const token = await getToken([SCOPES.photosPicker], true);
   const session = await api('sessions', token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   // "/autoclose" closes Google's picker window once you're done choosing.
-  window.open(`${session.pickerUri}/autoclose`, '_blank');
-  toast('Choose photos in Google Photos, then come back here…', 10 * 60_000);
+  const url = `${session.pickerUri}/autoclose`;
+  let opened = false;
+  if (isNative) {
+    // The app's WebView can't open windows: hand the link to Android (opens Google Photos).
+    opened = await openExternal(url).then(() => true, () => false);
+  } else if (win && !win.closed) {
+    win.location.href = url;
+    opened = true;
+  }
+  // If nothing could be opened automatically, a tap on this link always works.
+  toast(
+    `${opened ? 'Choose photos in Google Photos, then come back here…' : 'Open Google Photos to choose photos:'} ` +
+      `<a class="link" href="${url}" target="_blank" rel="noopener">${opened ? 'Reopen' : 'Open Google Photos'}</a>`,
+    10 * 60_000,
+  );
 
   // Wait for the selection to be made.
   const deadline = Date.now() + dur(session.pollingConfig?.timeoutIn, 10 * 60_000);
@@ -92,9 +106,13 @@ export function initPhotosPicker() {
   btn.hidden = !googleConfigured();
   btn.addEventListener('click', async () => {
     btn.disabled = true;
+    // Browsers only allow new windows straight from a tap, so open it now and point it
+    // at Google's picker once the session exists.
+    const win = isNative ? null : window.open('about:blank', '_blank');
     try {
-      await pickAndImport();
+      await pickAndImport(win);
     } catch (err) {
+      win?.close();
       alert(`Couldn't import from Google Photos: ${(err as Error).message}`);
     } finally {
       btn.disabled = false;

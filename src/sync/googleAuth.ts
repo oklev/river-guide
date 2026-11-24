@@ -24,6 +24,7 @@ interface Token {
 interface GoogleAuthPlugin {
   authorize(opts: { scopes: string[]; interactive: boolean }): Promise<{ accessToken: string; email?: string }>;
   signOut(): Promise<void>;
+  openUrl(opts: { url: string }): Promise<void>;
 }
 const NativeAuth = registerPlugin<GoogleAuthPlugin>('GoogleAuth');
 
@@ -137,6 +138,9 @@ export async function signOut() {
   if (isNative) await NativeAuth.signOut().catch(() => {});
   else if (t && typeof google !== 'undefined') google.accounts.oauth2.revoke?.(t.token, () => {});
 }
+
+/** Android: open a Google page outside the app (WebViews can't open new windows). */
+export const openExternal = (url: string) => NativeAuth.openUrl({ url });
 
 /** Forget a token Google rejected (expired or revoked early). */
 export function dropToken() {

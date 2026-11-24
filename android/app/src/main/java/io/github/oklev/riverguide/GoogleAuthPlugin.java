@@ -1,5 +1,8 @@
 package io.github.oklev.riverguide;
 
+import android.content.Intent;
+import android.net.Uri;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -90,6 +93,24 @@ public class GoogleAuthPlugin extends Plugin {
                 launcher.launch(new IntentSenderRequest.Builder(r.getPendingIntent().getIntentSender()).build());
             })
             .addOnFailureListener(e -> call.reject("Google sign-in failed: " + e.getMessage()));
+    }
+
+    /** Open a Google page (e.g. the Photos picker) in the Google Photos app or the browser. */
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || !url.startsWith("https://")) {
+            call.reject("Bad URL");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Couldn't open " + url + ": " + e.getMessage());
+        }
     }
 
     @PluginMethod
