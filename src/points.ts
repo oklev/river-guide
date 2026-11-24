@@ -25,6 +25,7 @@ import {
 } from './observations';
 import { $, escapeHtml, getMode, setMode } from './ui';
 import { mapFeatureAt, type MapFeature } from './mapFeatures';
+import { linkSummary, nearestRouteSpot, renderAccessLinks } from './access';
 import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
 import { dailyMean, fmtValue, freshGauge, levelFor, nearestGauge, readingSummary, routeGauge, LEVEL_LABELS } from './gauges';
 
@@ -186,6 +187,7 @@ export function renderPoints() {
     }
   }
   renderList();
+  renderAccessLinks();
 }
 
 function renderList() {
@@ -227,6 +229,49 @@ export function focusPoint(id: string) {
 const dialog = $<HTMLDialogElement>('editor');
 const form = $<HTMLFormElement>('editor-form');
 const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+
+/** Access points: where it meets a route, with buttons to change that. */
+function syncAccessRow() {
+  const access = field('category').value === 'access';
+  $('access-row').hidden = !access;
+  if (!access || !editing) return;
+  const link = editing.point.routeLink;
+  $('access-summary').textContent = linkSummary(editing.point);
+  $('access-detach').hidden = !!link && 'detached' in link;
+  $('access-auto').hidden = !link;
+}
+
+/** Close the editor for something on the map, then reopen it with what had been typed. */
+function aside(): () => void {
+  const typed = new FormData(form);
+  const e = editing;
+  dialog.close();
+  return () => {
+    editing = e;
+    for (const [k, v] of typed.entries()) {
+      const el = form.elements.namedItem(k) as HTMLInputElement | null;
+      if (el && typeof v === 'string') el.value = v;
+    }
+    syncShapeControls();
+    syncAccessRow();
+    syncSeverityVisibility();
+    dialog.showModal();
+  };
+}
+
+let resumeEditor: (() => void) | null = null;
+function startPick() {
+  resumeEditor = aside();
+  setMode('pick');
+  $('pick-hint').hidden = false;
+}
+function endPick() {
+  setMode('idle');
+  $('pick-hint').hidden = true;
+  const resume = resumeEditor;
+  resumeEditor = null;
+  resume?.();
+}
 
 function syncSeverityVisibility() {
   $('severity-row').hidden = !SEVERITY_CATEGORIES.includes(field('category').value as Category);
@@ -355,6 +400,7 @@ function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = [], 
   $('editor-delete').hidden = isNew;
   field('shapeKind').value = point.shape?.kind ?? '';
   syncShapeControls();
+  syncAccessRow();
   syncSeverityVisibility();
   dialog.showModal();
 }
@@ -432,7 +478,30 @@ export function initPoints() {
   field('category').innerHTML = Object.entries(CATEGORIES)
     .map(([k, c]) => `<option value="${k}">${c.icon} ${c.label}</option>`)
     .join('');
-  field('category').addEventListener('change', syncSeverityVisibility);
+  field('category').addEventListener('change', () => {
+    syncSeverityVisibility();
+    syncAccessRow();
+  });
+  $('access-detach').addEventListener('click', () => {
+    if (!editing) return;
+    editing.point = { ...editing.point, routeLink: { detached: true } };
+    syncAccessRow();
+  });
+  $('access-auto').addEventListener('click', () => {
+    if (!editing) return;
+    const { routeLink: _r, ...rest } = editing.point;
+    editing.point = rest;
+    syncAccessRow();
+  });
+  $('access-pick').addEventListener('click', startPick);
+  $('cancel-pick').addEventListener('click', endPick);
+  map.on('click', (e: L.LeafletMouseEvent) => {
+    if (getMode() !== 'pick' || !editing) return;
+    const spot = nearestRouteSpot([e.latlng.lat, e.latlng.lng]);
+    if (!spot) return alert('Tap on a route line (within 300 m of it).');
+    editing.point = { ...editing.point, routeLink: { routeId: spot.route.id, branch: spot.place.branch, km: spot.place.km } };
+    endPick();
+  });
   field('shapeKind').addEventListener('change', syncShapeControls);
   $('editor-draw').addEventListener('click', () => void drawShape());
 

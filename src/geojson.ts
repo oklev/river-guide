@@ -118,6 +118,12 @@ export function fromGeoJSON(data: unknown): ParsedData {
         waterLevel: isWaterLevel(p.waterLevel) ? p.waterLevel : undefined,
         gauge: typeof p.gauge === 'string' && p.gauge ? p.gauge.slice(0, 200) : undefined,
         shape: sanitizeShape(p.shape),
+        routeLink:
+          p.routeLink?.detached === true
+            ? { detached: true }
+            : typeof p.routeLink?.routeId === 'string' && typeof p.routeLink?.branch === 'string' && isNum(p.routeLink?.km)
+              ? { routeId: p.routeLink.routeId, branch: p.routeLink.branch, km: p.routeLink.km }
+              : undefined,
         history: Array.isArray(p.history)
           ? (p.history.map(sanitizeObservation).filter(Boolean) as NonNullable<ReturnType<typeof sanitizeObservation>>[])
           : undefined,

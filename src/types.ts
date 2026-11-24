@@ -56,9 +56,17 @@ export interface RiverPoint extends Revisioned {
   history?: PointObservation[];
   /** Optional line or area drawn for the point (a rapid, a bridge, an island). lat/lng stay its marker. */
   shape?: PointShape;
+  /**
+   * Access points: where this one meets a route. Absent = automatic (the
+   * nearest spot on any route within 150 m); a spot picked by hand; or
+   * detached (never attaches).
+   */
+  routeLink?: RouteLink;
   createdAt: string;
   updatedAt: string;
 }
+
+export type RouteLink = { routeId: string; branch: string; km: number } | { detached: true };
 
 /** A point's line or area; an area's ring isn't closed (the first point isn't repeated). */
 export interface PointShape {

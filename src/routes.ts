@@ -24,6 +24,7 @@ import { fmtValue, gaugesNearRoute, refreshGauges, routeConditions } from './gau
 import { forgetNav, refreshNav } from './nav';
 import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route, type RouteFork } from './types';
 import { allLines, forkFromDrawing, locateOnRoute, MAIN, riverKm } from './routeGraph';
+import { accessPlace, renderAccessLinks } from './access';
 import type { TileCoord } from './tiles';
 import { $, escapeHtml, fmtBytes, fmtMi, fmtWalk, getMode } from './ui';
 
@@ -53,7 +54,14 @@ function conditionsHtml(r: Route): string {
 
 function popupHtml(r: Route): string {
   const pointRows = state.points
-    .map((p) => ({ p, loc: locateOnRoute(r, [p.lat, p.lng]) }))
+    .map((p) => {
+      // Access points sit where they attach; others where they're nearest the route.
+      if (p.category === 'access') {
+        const a = accessPlace(p, r);
+        return { p, loc: a ? { ...a.place, offKm: 0 } : null };
+      }
+      return { p, loc: locateOnRoute(r, [p.lat, p.lng]) };
+    })
     .filter((x) => x.loc && x.loc.offKm <= ALONG_KM)
     .map(({ p, loc }) => {
       const c = CATEGORIES[p.category];
@@ -211,6 +219,7 @@ export function renderRoutes() {
       forkLines.delete(key);
     }
   }
+  renderAccessLinks();
   $('route-list').innerHTML = state.routes.length
     ? [...state.routes]
         .sort((a, b) => a.name.localeCompare(b.name))
