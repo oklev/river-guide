@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: fileURLToPath(new URL('index.html', import.meta.url)),
         view: fileURLToPath(new URL('view.html', import.meta.url)),
+        // One-off check that shared trip folders work with River Guide's limited Drive access.
+        sharetest: fileURLToPath(new URL('sharetest.html', import.meta.url)),
       },
     },
   },

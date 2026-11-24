@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>Shared folder test · River Guide</title>
+    <style>
+      :root { --bg: #fff; --fg: #1d2a30; --muted: #61727a; --accent: #0f4c5c; --border: #dbe3e6; color-scheme: light dark; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #172227; --fg: #e4ecef; --muted: #93a5ad; --accent: #3fa7b8; --border: #2c3b41; } }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+      main { max-width: 620px; margin: 0 auto; padding: 24px 16px 64px; }
+      h1 { color: var(--accent); font-size: 1.4rem; margin: 0 0 4px; }
+      h2 { font-size: 1.05rem; margin: 24px 0 8px; }
+      section { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 16px; }
+      section[hidden] { display: none; }
+      .muted { color: var(--muted); font-size: 14px; }
+      button { font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: var(--bg); cursor: pointer; margin: 4px 6px 4px 0; }
+      button:disabled { opacity: 0.5; }
+      input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--fg); }
+      #log { font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; background: rgb(127 127 127 / 0.08); border-radius: 8px; padding: 10px; margin-top: 16px; min-height: 3em; }
+      .link { word-break: break-all; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Shared folder test</h1>
+      <p class="muted">Checks whether River Guide's limited Google Drive access is enough for shared trip folders. Nothing here touches your River Guide data.</p>
+
+      <section id="owner">
+        <h2>1. You (the one sharing)</h2>
+        <p class="muted">Creates a folder "River Guide shared-folder test" in your Drive with one file, and shares it with the other person as an editor.</p>
+        <label>Share with (their Google account email)<input id="email" type="email" /></label>
+        <button id="create">Create and share the test folder</button>
+        <p id="share-link-box" hidden>Send them this link: <a id="share-link" class="link" target="_blank"></a></p>
+        <h2>3. After they've done step 2</h2>
+        <button id="owner-add" disabled>Add a new file</button>
+        <button id="owner-check" disabled>Check what I can see</button>
+      </section>
+
+      <section id="member" hidden>
+        <h2>2. You (the one it was shared with)</h2>
+        <p class="muted">Opens the shared folder with River Guide's limited access and tries to read and add files.</p>
+        <button id="join">Sign in and open the shared folder</button>
+        <h2>4. After they've added a new file (step 3)</h2>
+        <button id="member-check" disabled>Check again</button>
+      </section>
+
+      <div id="log"></div>
+      <button id="copy">Copy results</button>
+    </main>
+    <script type="module" src="/src/shareTest.ts"></script>
+  </body>
+</html>
