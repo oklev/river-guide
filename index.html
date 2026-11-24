@@ -59,6 +59,7 @@
               <label class="btn">Import photos
                 <input id="import-photos" type="file" accept="image/*" multiple hidden />
               </label>
+              <button id="import-google-photos" class="btn" hidden>From Google Photos</button>
               <label class="btn">Import GPX
                 <input id="import-gpx" type="file" accept=".gpx,application/gpx+xml" multiple hidden />
               </label>
@@ -76,6 +77,17 @@
               Import file
               <input id="import" type="file" accept=".zip,.geojson,.json,application/zip,application/geo+json,application/json" hidden />
             </label>
+          </div>
+          <div class="sync-box">
+            <div class="sync-head"><strong>Sync</strong>
+              <span class="spacer"></span>
+              <button id="sync-now" class="btn small" hidden>Sync now</button>
+            </div>
+            <div id="sync-status" class="small muted"></div>
+            <div class="footer-row">
+              <button id="sync-connect" class="btn small primary" hidden>Connect Google Drive</button>
+              <button id="sync-disconnect" class="link small" hidden>Disconnect</button>
+            </div>
           </div>
           <label class="setting-row small muted">Show my location as
             <select id="location-icon"></select>

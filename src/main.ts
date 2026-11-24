@@ -17,6 +17,9 @@ import { initPhotos, renderPhotos } from './photos';
 import { initCameraRoll, syncSession } from './cameraRoll';
 import { initSystemBars, saveFile } from './platform';
 import { initMyLocation } from './myLocation';
+import { initSync, setOnReceived } from './sync';
+import { initSyncUi } from './sync/ui';
+import { initPhotosPicker } from './sync/photosPicker';
 import { $, prefs } from './ui';
 
 initOsmLayer();
@@ -108,3 +111,28 @@ void refreshGauges();
 void refreshNav();
 // Pick up photos taken in a photo session while the app was closed.
 if (hasCameraRoll) void syncSession();
+
+// ---------- sync between devices ----------
+/** Reload synced data after other devices' changes arrive, and redraw. */
+setOnReceived(async () => {
+  const [points, routes, tracks, photos, portages] = await Promise.all([
+    getAll('points'),
+    getAll('routes'),
+    getAll('tracks'),
+    getAll('photos'),
+    getAll('portages'),
+  ]);
+  // A track being recorded right now is owned by the recorder: keep its live object.
+  const live = new Map(state.tracks.filter((t) => t.recording).map((t) => [t.id, t]));
+  Object.assign(state, { points, routes, photos, portages, tracks: tracks.map((t) => live.get(t.id) ?? t) });
+  renderRoutes();
+  renderPortages();
+  renderTracks();
+  renderPhotos();
+  renderPoints();
+  renderGauges();
+  void refreshNav();
+});
+initSync();
+initSyncUi();
+initPhotosPicker();

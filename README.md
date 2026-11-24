@@ -55,6 +55,14 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - In a browser, 📷 takes a single photo and tags it with your current position.
 - **Panoramas** (2:1 or wider) are kept at higher resolution and open full-height in the viewer, where you swipe to look around.
 
+**Sync between devices (Google Drive)**
+- **Connect Google Drive** in the sidebar on each device. Points, routes, tracks, portages/trails and photos then stay in sync through a "River Guide" folder in your Drive. Gauges, navigation charts and offline maps aren't synced; each device fetches its own.
+- Syncs when the app opens, about 10 s after a change, when you're back online, every 5 minutes while open, and with **Sync now**.
+- If two devices change the same item, the newer change wins. Deletions sync too (they're remembered for 90 days).
+- How it works: each device writes only its own `device-<id>.json` snapshot (so devices never overwrite each other) and reads everyone else's; photos are separate `photo-<id>.jpg` / `thumb-<id>.jpg` files uploaded once. The app only has access to files it creates (Drive's `drive.file` scope).
+- **From Google Photos** (Tracks tab) imports photos chosen in Google's photo picker. Google strips their GPS, so they're matched to a recorded track by time or placed by hand.
+- Needs a Google Cloud project; see "Setting up Google sync" below.
+
 **Data & sharing**
 - **Share…** on a route saves it as one `.riverguide.zip` file: the route, your points within a chosen distance of it, their photos, and optionally your GPS tracks along it. Offline maps aren't included; they can be downloaded again. Inside is a standard `route.geojson` plus a `photos/` folder.
 - **Import file** accepts `.riverguide.zip` and plain GeoJSON. Items are matched by ID and the newer copy wins, so moving data back and forth between devices doesn't duplicate anything or overwrite newer edits. Each device keeps its own offline downloads.
@@ -125,6 +133,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/geo.ts` | Distance, length, project-point-onto-line math |
 | `src/cameraRoll.ts` | Android photo sessions (camera app + camera-roll import) |
 | `src/myLocation.ts` | Live "you are here" marker (dot or boat icon) |
+| `src/sync/` | Device sync: merge logic, engine, Google Drive remote, Google sign-in, Photos picker |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |
@@ -133,3 +142,21 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 
 - Snap traced routes to the actual river channel (NHD flowlines)
 - Shared backend so multiple people can edit
+
+## Setting up Google sync
+
+Drive sync and the Google Photos import need a (free) Google Cloud project, registered under your own Google account. One-time, about 15 minutes:
+
+1. **Create a project:** [console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate), name it "River Guide", and select it.
+2. **Enable APIs** ([API Library](https://console.cloud.google.com/apis/library)): **Google Drive API**, **Google Picker API** and **Photos Picker API**.
+3. **Consent screen** ([Google Auth Platform](https://console.cloud.google.com/auth/overview) → Get started): app name "River Guide", your email for support and contact, audience **External**.
+4. **Data access** → Add or remove scopes → add these by hand, then Save:
+   - `https://www.googleapis.com/auth/drive.file`
+   - `https://www.googleapis.com/auth/photospicker.mediaitems.readonly`
+5. **Audience** → **Publish app**, so the status is **In production**. (In "Testing", Google signs you out every 7 days.)
+6. **Clients** → Create client → **Web application**: authorized JavaScript origin `http://localhost:5173` (add any other address you open the app at). Copy the **Client ID**.
+7. **Clients** → Create client → **Android**: package name `io.github.oklev.riverguide`, SHA-1 `1D:13:C1:BD:9E:2E:7C:92:BA:B4:C0:E3:78:C9:9E:19:3B:4E:84:51` (the release signing key, which also signs debug builds).
+8. **API key** ([Credentials](https://console.cloud.google.com/apis/credentials) → Create credentials → API key): restrict it to the **Google Picker API**, and to websites `http://localhost:5173/*` and `https://localhost/*` (the Android app). Copy the key.
+9. Put the Client ID, API key and **project number** (on the project dashboard) in `src/sync/config.ts`.
+
+None of these values are secrets: client IDs and restricted API keys are designed to ship inside apps.

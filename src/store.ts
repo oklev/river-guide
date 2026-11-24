@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Gauge, OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, RouteNav, Track } from './types';
+import type { Gauge, OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, RouteNav, Tombstone, Track } from './types';
 
 const DB_NAME = 'river-guide';
 
@@ -13,8 +13,14 @@ interface Stores {
   portages: Portage;
   gauges: Gauge;
   nav: RouteNav;
+  tombstones: Tombstone;
 }
-type StoreName = keyof Stores;
+export type StoreName = keyof Stores;
+
+/** Stores whose records sync between devices (see sync/). */
+export const SYNCED_STORES = ['points', 'routes', 'tracks', 'portages', 'photos'] as const;
+export type SyncedStore = (typeof SYNCED_STORES)[number];
+const isSynced = (s: StoreName): s is SyncedStore => (SYNCED_STORES as readonly string[]).includes(s);
 
 /** Every object store and its key. Adding a store means adding it here and bumping DB_VERSION. */
 const STORES: Record<StoreName, string> = {
@@ -27,8 +33,9 @@ const STORES: Record<StoreName, string> = {
   portages: 'id',
   gauges: 'id',
   nav: 'routeId',
+  tombstones: 'key',
 };
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -89,12 +96,57 @@ export async function getAll<S extends StoreName>(store: S): Promise<Stores[S][]
   return (await db()).getAll(store);
 }
 
-export async function put<S extends StoreName>(store: S, value: Stores[S]): Promise<void> {
-  await (await db()).put(store, value);
+// ---------- change tracking for sync ----------
+/** A short random ID for this device/browser, used to break ties between revisions. */
+export function deviceId(): string {
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem('river-guide:deviceId');
+    if (!id) {
+      id = crypto.randomUUID().slice(0, 8);
+      localStorage.setItem('river-guide:deviceId', id);
+    }
+  } catch {
+    /* private mode: a fresh ID per session is fine */
+  }
+  return (id ??= crypto.randomUUID().slice(0, 8));
 }
 
-export async function del(store: StoreName, id: string): Promise<void> {
-  await (await db()).delete(store, id);
+/** Revisions sort by time, then device: "2026-11-23T14:03:11.123Z~a1b2c3d4". */
+export const newRev = () => `${new Date().toISOString()}~${deviceId()}`;
+
+interface WriteOpts {
+  /** Written by sync with a revision from elsewhere: keep it, don't record a local change. */
+  fromSync?: boolean;
+}
+
+const changeListeners = new Set<() => void>();
+/** Called after any local (non-sync) change to synced data. */
+export function onLocalChange(cb: () => void): () => void {
+  changeListeners.add(cb);
+  return () => changeListeners.delete(cb);
+}
+const notify = () => changeListeners.forEach((cb) => cb());
+
+export async function put<S extends StoreName>(store: S, value: Stores[S], opts: WriteOpts = {}): Promise<void> {
+  const d = await db();
+  if (isSynced(store) && !opts.fromSync) {
+    (value as { _rev?: string })._rev = newRev();
+    await d.put(store, value);
+    await d.delete('tombstones', `${store}:${(value as { id: string }).id}`); // re-created after a delete
+    notify();
+    return;
+  }
+  await d.put(store, value);
+}
+
+export async function del(store: StoreName, id: string, opts: WriteOpts = {}): Promise<void> {
+  const d = await db();
+  await d.delete(store, id);
+  if (isSynced(store) && !opts.fromSync) {
+    await d.put('tombstones', { key: `${store}:${id}`, store, id, rev: newRev() });
+    notify();
+  }
 }
 
 export async function get<S extends StoreName>(store: S, key: string): Promise<Stores[S] | undefined> {
@@ -113,7 +165,10 @@ export async function count(store: StoreName): Promise<number> {
   return (await db()).count(store);
 }
 
-export async function putMany<S extends StoreName>(store: S, values: Stores[S][]): Promise<void> {
+export async function putMany<S extends StoreName>(store: S, values: Stores[S][], opts: WriteOpts = {}): Promise<void> {
+  const stamp = isSynced(store) && !opts.fromSync;
+  if (stamp) for (const v of values) (v as { _rev?: string })._rev = newRev();
   const tx = (await db()).transaction(store, 'readwrite');
   await Promise.all([...values.map((v) => tx.store.put(v)), tx.done]);
+  if (stamp && values.length) notify();
 }

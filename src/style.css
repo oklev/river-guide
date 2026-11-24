@@ -406,3 +406,9 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 }
 .me-boat { transform: rotate(var(--rot)); transition: transform 0.4s ease; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
 .me-boat svg { display: block; }
+
+/* ---------- sync ---------- */
+.sync-box { display: flex; flex-direction: column; gap: 6px; }
+.sync-head { display: flex; align-items: center; gap: 8px; }
+.sync-head .spacer { flex: 1; }
+.sync-error { color: var(--danger); }

@@ -36,7 +36,7 @@ export interface PointObservation {
   recordedAt: string;
 }
 
-export interface RiverPoint {
+export interface RiverPoint extends Revisioned {
   id: string;
   name: string;
   category: Category;
@@ -81,7 +81,7 @@ export interface OfflineInfo {
   partial?: boolean;
 }
 
-export interface Route {
+export interface Route extends Revisioned {
   id: string;
   name: string;
   description: string;
@@ -145,7 +145,7 @@ export const ROUTE_COLORS = ['#1565c0', '#d81b60', '#00897b', '#f4511e', '#5e35b
 /** [lat, lng, time (ms since epoch), accuracy (m) or -1 if unknown] */
 export type TrackFix = [number, number, number, number];
 
-export interface Track {
+export interface Track extends Revisioned {
   id: string;
   name: string;
   /** Ordered by time. */
@@ -160,7 +160,7 @@ export interface Track {
 /** How a photo's location was determined. */
 export type PhotoLocSource = 'exif' | 'track' | 'gps' | 'manual';
 
-export interface Photo {
+export interface Photo extends Revisioned {
   id: string;
   /** Attached point, or undefined while it's a draft awaiting review. */
   pointId?: string;
@@ -188,7 +188,7 @@ export interface PhotoBlob {
 /** Walking paths that belong with a river route. */
 export type PathKind = 'portage' | 'access';
 
-export interface Portage {
+export interface Portage extends Revisioned {
   id: string;
   name: string;
   kind: PathKind;
@@ -269,4 +269,20 @@ export interface RouteNav {
   key: string;
   fetchedAt: string;
   features: NavFeature[];
+}
+
+/**
+ * Synced records carry `_rev`: when and where they were last changed
+ * ("2026-11-23T14:03:11.123Z~a1b2c3d4"). The newest revision wins when devices sync.
+ */
+export interface Revisioned {
+  _rev?: string;
+}
+
+/** A record deleted on this device, kept for a while so the deletion reaches other devices. */
+export interface Tombstone {
+  key: string; // "points:<id>"
+  store: string;
+  id: string;
+  rev: string;
 }
