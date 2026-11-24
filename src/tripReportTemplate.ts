@@ -31,6 +31,8 @@ export interface ReportData {
   routeColor: string;
   /** Each GPS track: [lat, lng, time ms (0 if unknown)][] */
   tracks: [number, number, number][][];
+  /** For each track, when it was on the water [start, end] (null: all of it). */
+  water: ([number, number] | null)[];
   /** Which optional parts to show. */
   show: { stats: boolean; sun: boolean; speed: boolean; legend: boolean };
   items: ReportItem[];
@@ -186,9 +188,18 @@ const SCRIPT = `
   var bounds = L.latLngBounds([]);
   var show = d.show || { stats: true, sun: true, speed: true, legend: true };
   // Each GPS track: its fixes [lat, lng, time] and whether it has usable times.
-  var segs = (d.tracks || []).filter(function (t) { return t.length > 1; }).map(function (t) {
-    return { pts: t, ll: t.map(function (p) { return [p[0], p[1]]; }), timed: t[0][2] > 0 && t[t.length - 1][2] > t[0][2] };
-  });
+  // wa..wb: the fixes on the water (from the put-in to the take-out); the rest is e.g. driving.
+  var segs = (d.tracks || []).map(function (t, i) { return { pts: t, water: (d.water || [])[i] }; })
+    .filter(function (s) { return s.pts.length > 1; })
+    .map(function (s) {
+      var t = s.pts, wa = 0, wb = t.length - 1;
+      if (s.water) {
+        while (wa < t.length - 1 && t[wa][2] < s.water[0]) wa++;
+        while (wb > wa && t[wb][2] > s.water[1]) wb--;
+      }
+      return { pts: t, ll: t.map(function (p) { return [p[0], p[1]]; }), wa: wa, wb: wb,
+        timed: t[0][2] > 0 && t[t.length - 1][2] > t[0][2] && wb > wa };
+    });
   var anyTimed = segs.some(function (s) { return s.timed; });
   if (d.route.length) { var r = L.polyline(d.route, { color: d.routeColor, weight: 4, opacity: 0.5, dashArray: '8 8' }).addTo(map); bounds.extend(r.getBounds()); }
   var TRACK_COLOR = '#37474f';
@@ -266,28 +277,34 @@ const SCRIPT = `
   var speedRange = null, anyStops = false;
   var useSpeed = show.speed && anyTimed;
   if (useSpeed) {
-    segs.forEach(function (s) { if (s.timed) s.runs = computeRuns(s.pts); });
+    segs.forEach(function (s) { if (s.timed) s.runs = computeRuns(s.pts.slice(s.wa, s.wb + 1)); });
     var moving = [];
     segs.forEach(function (s) { (s.runs || []).forEach(function (x) { if (x.mph >= STOP_MPH) moving.push(x.mph); else anyStops = true; }); });
     if (moving.length) speedRange = [Math.min.apply(null, moving), Math.max.apply(null, moving)];
   }
+  var OFF_WATER_COLOR = '#78909c';
+  var anyOffWater = false;
   segs.forEach(function (s) {
+    // Before the put-in and after the take-out: thin and dashed, no speed colours.
+    if (s.wa > 0) { anyOffWater = true; L.polyline(s.ll.slice(0, s.wa + 1), { color: OFF_WATER_COLOR, weight: 2, opacity: 0.8, dashArray: '4 6', interactive: false }).addTo(map); }
+    if (s.wb < s.ll.length - 1) { anyOffWater = true; L.polyline(s.ll.slice(s.wb), { color: OFF_WATER_COLOR, weight: 2, opacity: 0.8, dashArray: '4 6', interactive: false }).addTo(map); }
+    var water = s.ll.slice(s.wa, s.wb + 1);
     if (!s.runs) {
-      var line = L.polyline(s.ll, { color: TRACK_COLOR, weight: 3, opacity: 0.85, interactive: false }).addTo(map);
-      pieces.push({ seg: s, line: line, hit: L.polyline(s.ll, { weight: 22, opacity: 0 }).addTo(map) });
+      var line = L.polyline(water, { color: TRACK_COLOR, weight: 3, opacity: 0.85, interactive: false }).addTo(map);
+      pieces.push({ seg: s, line: line, hit: L.polyline(water, { weight: 22, opacity: 0 }).addTo(map) });
       return;
     }
     s.runs.forEach(function (x) {
       var stopped = x.mph < STOP_MPH;
       var lo = speedRange ? speedRange[0] : 0, hi = speedRange ? speedRange[1] : 0;
       var color = stopped ? STOP_COLOR : rampColor(hi - lo < 0.1 ? 0.5 : (x.mph - lo) / (hi - lo));
-      var pts = s.ll.slice(x.a, x.b + 1);
+      var pts = s.ll.slice(s.wa + x.a, s.wa + x.b + 1);
       // Round joins and caps let neighbouring sections flow into each other.
       var line = L.polyline(pts, { color: color, weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
       // A wide invisible copy makes the section easy to hover.
       var hit = L.polyline(pts, { weight: 22, opacity: 0 }).addTo(map);
       var label = (stopped ? 'Stopped' : x.mph.toFixed(1) + ' mph') + ' · ' + fmtDur(x.ms) +
-        (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(s.pts[x.a][2]) + '–' + fmtTime(s.pts[x.b][2]);
+        (stopped ? '' : ' · ' + x.mi.toFixed(x.mi < 1 ? 2 : 1) + ' mi') + '<br>' + fmtTime(s.pts[s.wa + x.a][2]) + '–' + fmtTime(s.pts[s.wa + x.b][2]);
       hit.bindTooltip(label, { sticky: true, direction: 'top', offset: [0, -10] });
       hit.on('mouseover', function () { line.setStyle({ weight: 8 }); });
       hit.on('mouseout', function () { line.setStyle({ weight: 5 }); });
@@ -307,6 +324,7 @@ const SCRIPT = `
         '<div class="scale"><span>' + speedRange[0].toFixed(1) + '</span><span>' + speedRange[1].toFixed(1) + ' mph</span></div>';
       if (anyStops) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + STOP_COLOR + '" stroke-width="4"/></svg>Stopped</div>';
     }
+    if (anyOffWater) h += '<div class="row"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="' + OFF_WATER_COLOR + '" stroke-width="2" stroke-dasharray="4 4"/></svg>Before put-in / after take-out</div>';
     div.innerHTML = h;
     return div;
   };
@@ -426,11 +444,11 @@ const SCRIPT = `
   var showSun = function () {};
   if (show.sun && anyTimed) {
     // Across all chosen tracks; tracks on different days use the first one.
-    var timedSegs = segs.filter(function (s) { return s.timed; }).sort(function (a, b) { return a.pts[0][2] - b.pts[0][2]; });
+    var timedSegs = segs.filter(function (s) { return s.timed; }).sort(function (a, b) { return a.pts[a.wa][2] - b.pts[b.wa][2]; });
     var firstSeg = timedSegs[0];
-    var lat = firstSeg.pts[0][0], lng = firstSeg.pts[0][1], tStart = firstSeg.pts[0][2];
-    var tFinish = Math.max.apply(null, timedSegs.map(function (s) { return s.pts[s.pts.length - 1][2]; }));
-    if (tFinish - tStart > 20 * 3600000) tFinish = firstSeg.pts[firstSeg.pts.length - 1][2];
+    var lat = firstSeg.pts[firstSeg.wa][0], lng = firstSeg.pts[firstSeg.wa][1], tStart = firstSeg.pts[firstSeg.wa][2];
+    var tFinish = Math.max.apply(null, timedSegs.map(function (s) { return s.pts[s.wb][2]; }));
+    if (tFinish - tStart > 20 * 3600000) tFinish = firstSeg.pts[firstSeg.wb][2];
     // Height scale: the water line up to the day's highest sun, so a late paddle sits low in the sky.
     var noonAlt = 10;
     for (var x = tStart - 12 * 3600000; x < tStart + 12 * 3600000; x += 10 * 60000) noonAlt = Math.max(noonAlt, sunAlt(x, lat, lng));

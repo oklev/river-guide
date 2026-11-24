@@ -54,6 +54,50 @@ function timeAt(t: Track | undefined, p: LatLng, km: number): number | undefined
  */
 const STATS_SPACING_MS = 30_000;
 
+/** An access point counts as passed if the track comes this close (km). */
+const ACCESS_NEAR_KM = 0.3;
+
+/**
+ * When the track was on the water: from passing the first Access point to
+ * passing the last (anything else is e.g. driving to the put-in). With one
+ * access point it's the put-in if passed early in the track, the take-out if
+ * late. Undefined when no access point is near (the whole track counts).
+ */
+export function waterWindow(t: Track): [number, number] | undefined {
+  const f = t.fixes;
+  if (f.length < 2 || !(f[0][2] > 0) || !(f[f.length - 1][2] > f[0][2])) return undefined;
+  const passes: number[] = [];
+  for (const p of state.points) {
+    if (p.category !== 'access') continue;
+    let best = Infinity;
+    let time = 0;
+    for (const x of f) {
+      const d = distKm([p.lat, p.lng], [x[0], x[1]]);
+      if (d < best) {
+        best = d;
+        time = x[2];
+      }
+    }
+    if (best <= ACCESS_NEAR_KM) passes.push(time);
+  }
+  if (!passes.length) return undefined;
+  const t0 = f[0][2];
+  const t1 = f[f.length - 1][2];
+  let start = Math.min(...passes);
+  let end = Math.max(...passes);
+  if (start === end) {
+    if (start - t0 < t1 - start) end = t1;
+    else start = t0;
+  }
+  return end > start ? [start, end] : undefined;
+}
+
+/** Only the fixes inside a time window (all of them without one). */
+export function onWater(t: Track): Track {
+  const w = waterWindow(t);
+  return w ? { ...t, fixes: t.fixes.filter((x) => x[2] >= w[0] && x[2] <= w[1]) } : t;
+}
+
 export function trackStats(t: Track) {
   const f = t.fixes;
   const timed = f.length > 1 && f[0][2] > 0 && f[f.length - 1][2] > f[0][2];
@@ -140,7 +184,7 @@ function nearAny(lines: LatLng[][], p: LatLng, km: number) {
  */
 export function candidatePhotos(routeCoords: LatLng[] | undefined, tracks: Track[]): { photos: Photo[]; selected: Set<string> } {
   const lines = [...tracks.map(fixLatLng), ...(routeCoords ? [routeCoords] : [])];
-  const windows = tracks.map((t) => trackStats(t)).filter((s) => s.start && s.end);
+  const windows = tracks.map((t) => trackStats(onWater(t))).filter((s) => s.start && s.end);
   const during = (ph: Photo) =>
     !!ph.takenAt && windows.some((w) => ph.takenAt! >= w.start! - PHOTO_SLACK_MS && ph.takenAt! <= w.end! + PHOTO_SLACK_MS);
   const pointIds = new Set(state.points.filter((p) => nearAny(lines, [p.lat, p.lng], ROUTE_POINT_NEAR_KM)).map((p) => p.id));
@@ -196,7 +240,9 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
   const photos = state.photos.filter((ph) => wanted.has(ph.id)).sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
 
   // Combined stats over all chosen tracks.
-  const all = o.tracks.map(trackStats);
+  // Stats cover time on the water only (not driving to the put-in).
+  const water = o.tracks.map(onWater);
+  const all = water.map(trackStats);
   const sum = (f: (s: ReturnType<typeof trackStats>) => number | undefined) => all.reduce((n, s) => n + (f(s) ?? 0), 0);
   const movingMs = sum((s) => s.movingMs);
   const movingKm = all.reduce((n, s) => n + (s.avgKmh ? (s.avgKmh * s.movingMs) / 3_600_000 : 0), 0);
@@ -227,8 +273,9 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
     });
   }
   const ordered = [...o.tracks].sort((a, b) => startOf(a) - startOf(b));
-  const first = ordered[0]?.fixes[0];
-  const lastTrack = ordered[ordered.length - 1];
+  const orderedWater = ordered.map(onWater).filter((t) => t.fixes.length);
+  const first = orderedWater[0]?.fixes[0];
+  const lastTrack = orderedWater[orderedWater.length - 1];
   const last = lastTrack?.fixes[lastTrack.fixes.length - 1];
   if (first && last) {
     items.push({ kind: 'start', title: 'Start', text: '', time: first[2] || undefined, mile: mileOf([first[0], first[1]]), at: [first[0], first[1]] });
@@ -267,6 +314,7 @@ export async function buildReport(o: ReportOptions): Promise<ReportData> {
     route: routeCoords ?? [],
     routeColor: o.route?.color ?? '#1565c0',
     tracks,
+    water: ordered.map((t) => waterWindow(t) ?? null),
     items,
     photos: photoData,
     show: o.show,
