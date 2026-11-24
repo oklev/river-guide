@@ -162,7 +162,10 @@ export async function buildReport({ route, track }: ReportSource): Promise<Repor
 
   // A thinned track keeps the file small without losing its shape.
   const step = track ? Math.max(1, Math.ceil(track.fixes.length / MAX_TRACK_POINTS)) : 1;
-  const trackLine: LatLng[] = track ? track.fixes.filter((_, i, a) => i % step === 0 || i === a.length - 1).map((f) => [f[0], f[1]]) : [];
+  // [lat, lng, time ms (0 if unknown)]: times drive the speed dots, sun gauge and hover.
+  const trackLine: [number, number, number][] = track
+    ? track.fixes.filter((_, i, a) => i % step === 0 || i === a.length - 1).map((f) => [f[0], f[1], f[2] || 0])
+    : [];
 
   const dateOf = stats?.start ?? photos[0]?.takenAt ?? (route ? Date.parse(route.updatedAt) : Date.now());
   return {
