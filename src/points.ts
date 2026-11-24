@@ -2,12 +2,14 @@ import L from 'leaflet';
 import { map } from './map';
 import { state } from './state';
 import { del, put } from './store';
-import { KM_PER_MI, nearestRoute } from './geo';
+import { KM_PER_MI, lengthKm, nearestRoute, shapeAnchor } from './geo';
 import {
   CATEGORIES,
   SEVERITY_CATEGORIES,
   type Category,
+  type LatLng,
   type PointObservation,
+  type PointShape,
   type RiverPoint,
   type Severity,
   type WaterLevel,
@@ -22,10 +24,13 @@ import {
   today,
 } from './observations';
 import { $, escapeHtml, getMode, setMode } from './ui';
+import { mapFeatureAt, type MapFeature } from './mapFeatures';
 import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
 import { dailyMean, fmtValue, freshGauge, levelFor, nearestGauge, readingSummary, routeGauge, LEVEL_LABELS } from './gauges';
 
 const markers = new Map<string, L.Marker>();
+/** Lines and areas drawn for points that have a shape. */
+const shapes = new Map<string, L.Polyline<any> | L.Polygon>();
 const visibleCategories = new Set<Category>(Object.keys(CATEGORIES) as Category[]);
 let searchText = '';
 /**
@@ -96,7 +101,35 @@ function photoStrip(pointId: string): string {
   return `<div class="photo-strip">${imgs}${photos.length > 4 ? `<span>+${photos.length - 4}</span>` : ''}</div>`;
 }
 
+function upsertShape(p: RiverPoint) {
+  const old = shapes.get(p.id);
+  if (!p.shape) {
+    old?.remove();
+    shapes.delete(p.id);
+    return;
+  }
+  const c = CATEGORIES[p.category];
+  const style: L.PathOptions = p.shape.kind === 'area'
+    ? { color: c.color, weight: 2, opacity: 0.9, fillColor: c.color, fillOpacity: 0.18 }
+    : { color: c.color, weight: 5, opacity: 0.85, lineCap: 'round' };
+  if (old && (old instanceof L.Polygon) === (p.shape.kind === 'area')) {
+    old.setLatLngs(p.shape.coords).setStyle(style);
+    return;
+  }
+  old?.remove();
+  const layer = p.shape.kind === 'area' ? L.polygon(p.shape.coords, style) : L.polyline(p.shape.coords, style);
+  // Same popup as the marker, but not while drawing or placing something.
+  layer.on('click', (e: L.LeafletMouseEvent) => {
+    if (getMode() !== 'idle') return;
+    L.DomEvent.stopPropagation(e);
+    const cur = state.points.find((x) => x.id === p.id);
+    if (cur) L.popup({ maxWidth: 280 }).setLatLng(e.latlng).setContent(popupHtml(cur)).openOn(map);
+  });
+  shapes.set(p.id, layer);
+}
+
 function upsertMarker(p: RiverPoint) {
+  upsertShape(p);
   let m = markers.get(p.id);
   if (!m) {
     const marker = L.marker([p.lat, p.lng], { draggable: true });
@@ -104,8 +137,16 @@ function upsertMarker(p: RiverPoint) {
       const cur = state.points.find((x) => x.id === p.id);
       if (!cur) return;
       const { lat, lng } = marker.getLatLng();
+      // Dragging the marker of a shaped point moves the whole shape with it.
+      if (cur.shape) {
+        const dLat = lat - cur.lat;
+        const dLng = lng - cur.lng;
+        cur.shape = { ...cur.shape, coords: cur.shape.coords.map(([a, b]) => [a + dLat, b + dLng] as LatLng) };
+      }
       Object.assign(cur, { lat, lng, updatedAt: new Date().toISOString() });
       await put('points', cur);
+      upsertShape(cur);
+      if (matches(cur)) shapes.get(cur.id)?.addTo(map);
     });
     markers.set(p.id, marker);
     m = marker;
@@ -127,13 +168,21 @@ export function renderPoints() {
   for (const p of state.points) {
     upsertMarker(p);
     const m = markers.get(p.id)!;
-    if (matches(p)) m.addTo(map);
-    else m.remove();
+    const shape = shapes.get(p.id);
+    if (matches(p)) {
+      shape?.addTo(map);
+      m.addTo(map);
+    } else {
+      m.remove();
+      shape?.remove();
+    }
   }
   for (const [id, m] of markers) {
     if (!state.points.some((p) => p.id === id)) {
       m.remove();
       markers.delete(id);
+      shapes.get(id)?.remove();
+      shapes.delete(id);
     }
   }
   renderList();
@@ -304,13 +353,64 @@ function openEditor(point: RiverPoint, isNew: boolean, photoIds: string[] = [], 
   $('mile-hint').textContent = '';
   $('editor-coords').textContent = `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
   $('editor-delete').hidden = isNew;
+  field('shapeKind').value = point.shape?.kind ?? '';
+  syncShapeControls();
   syncSeverityVisibility();
   dialog.showModal();
 }
 
+// ---------- shapes in the editor ----------
+const shapeLabel = (s?: PointShape) =>
+  !s ? '' : s.kind === 'line' ? `Line, ${(lengthKm(s.coords) * 1000).toFixed(0)} m long` : `Area with ${s.coords.length} corners`;
+
+function syncShapeControls() {
+  const kind = field('shapeKind').value as '' | 'line' | 'area';
+  const shape = editing?.point.shape;
+  const btn = $<HTMLButtonElement>('editor-draw');
+  btn.hidden = !kind;
+  btn.textContent = shape && shape.kind === kind ? 'Redraw' : 'Draw';
+  $('shape-hint').textContent = shape && shape.kind === kind ? shapeLabel(shape) : kind ? 'Not drawn yet' : '';
+}
+
+/** Draw (or redraw) the point's line or area on the map, then come back to the editor. */
+async function drawShape() {
+  if (!editing) return;
+  const kind = field('shapeKind').value as 'line' | 'area';
+  // Keep what's been typed so far: it's restored when the editor reopens.
+  const typed = new FormData(form);
+  const { editor } = await import('./routes');
+  const e = editing;
+  const existing = e.point.shape?.kind === kind ? e.point.shape.coords : [];
+  dialog.close();
+  editor.start(
+    existing,
+    CATEGORIES[(typed.get('category') as Category) ?? e.point.category]?.color ?? '#1565c0',
+    (coords) => {
+      editing = e;
+      if (coords && coords.length >= (kind === 'area' ? 3 : 2)) {
+        const shape: PointShape = { kind, coords };
+        const [lat, lng] = shapeAnchor(kind, coords);
+        editing.point = { ...editing.point, shape, lat, lng };
+        $('editor-coords').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+      for (const [k, v] of typed.entries()) {
+        const el = form.elements.namedItem(k) as HTMLInputElement | null;
+        if (el && typeof v === 'string') el.value = v;
+      }
+      syncShapeControls();
+      dialog.showModal();
+    },
+    {
+      hint: kind === 'area' ? 'Tap around the outline. It closes up by itself.' : 'Tap along the line.',
+      format: (km) => (kind === 'area' ? `${Math.round(km * 1000)} m around` : `${Math.round(km * 1000)} m`),
+      dashArray: kind === 'area' ? '6 4' : '',
+    },
+  );
+}
+
 /** Open the editor for a new, unsaved point (e.g. converted from an OSM feature). */
 export function openNewPoint(
-  init: Pick<RiverPoint, 'lat' | 'lng' | 'name' | 'category' | 'description'>,
+  init: Pick<RiverPoint, 'lat' | 'lng' | 'name' | 'category' | 'description'> & Partial<Pick<RiverPoint, 'shape'>>,
   opts: { photoIds?: string[] } = {},
 ) {
   const now = new Date().toISOString();
@@ -333,6 +433,8 @@ export function initPoints() {
     .map(([k, c]) => `<option value="${k}">${c.icon} ${c.label}</option>`)
     .join('');
   field('category').addEventListener('change', syncSeverityVisibility);
+  field('shapeKind').addEventListener('change', syncShapeControls);
+  $('editor-draw').addEventListener('click', () => void drawShape());
 
   $('mile-from-route').addEventListener('click', () => {
     if (!editing) return;
@@ -362,11 +464,14 @@ export function initPoints() {
       gauge: String(fd.get('gauge') ?? '').trim() || undefined,
       recordedAt: now,
     };
+    const shapeKind = String(fd.get('shapeKind') ?? '');
+    const keepShape = editing.point.shape && editing.point.shape.kind === shapeKind;
     const base: RiverPoint = {
       ...editing.point,
       name: String(fd.get('name')).trim(),
       category,
       riverMile: mile === '' ? undefined : Number(mile),
+      shape: keepShape ? editing.point.shape : undefined,
       updatedAt: now,
     };
     const p = asNewObservation ? addObservation(base, obs) : editCurrent(base, obs);
@@ -449,6 +554,38 @@ export function initPoints() {
     if (getMode() !== 'add-point') return;
     cancelAddPoint();
     openNewPoint({ name: '', category: 'hazard', description: '', lat: e.latlng.lat, lng: e.latlng.lng });
+  });
+
+  // Tapping an island or bridge on the base map offers to make it a point (with its outline or line).
+  let offered: MapFeature | null = null;
+  let lookup = 0;
+  map.on('click', async (e: L.LeafletMouseEvent) => {
+    if (getMode() !== 'idle' || map.getZoom() < 13) return;
+    // Taps on routes, tracks, shapes etc. are theirs, not the base map's.
+    if ((e.originalEvent.target as Element | null)?.closest?.('.leaflet-interactive, .leaflet-marker-icon, .leaflet-popup')) return;
+    const mine = ++lookup;
+    const f = await mapFeatureAt([e.latlng.lat, e.latlng.lng]).catch(() => null);
+    if (!f || mine !== lookup || getMode() !== 'idle') return;
+    offered = f;
+    const c = CATEGORIES[f.kind];
+    L.popup({ maxWidth: 260 })
+      .setLatLng(e.latlng)
+      .setContent(
+        `<div class="popup"><strong>${c.icon} ${escapeHtml(f.name ?? (f.kind === 'island' ? 'Island' : 'Bridge'))}</strong>
+          <div class="popup-meta">${f.kind === 'island' ? 'Island' : 'Bridge'} on the map (OpenStreetMap)</div>
+          <div class="popup-actions"><button class="btn small primary" data-map-feature>Create ${f.kind} point</button></div></div>`,
+      )
+      .openOn(map);
+  });
+  map.getContainer().addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-map-feature]') || !offered) return;
+    const f = offered;
+    offered = null;
+    map.closePopup();
+    const coords = f.kind === 'island' ? f.ring : f.line;
+    const shape: PointShape = { kind: f.kind === 'island' ? 'area' : 'line', coords };
+    const [lat, lng] = shapeAnchor(shape.kind, coords);
+    openNewPoint({ name: f.name ?? '', category: f.kind, description: '', lat, lng, shape });
   });
 
   // Edit button inside popups

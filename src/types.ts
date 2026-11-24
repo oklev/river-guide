@@ -7,7 +7,9 @@ export type Category =
   | 'campsite'
   | 'poi'
   | 'shuttle'
-  | 'gauge';
+  | 'gauge'
+  | 'island'
+  | 'bridge';
 
 export type Severity = 'low' | 'medium' | 'high';
 
@@ -52,8 +54,16 @@ export interface RiverPoint extends Revisioned {
   gauge?: string;
   /** Earlier observations, newest first. */
   history?: PointObservation[];
+  /** Optional line or area drawn for the point (a rapid, a bridge, an island). lat/lng stay its marker. */
+  shape?: PointShape;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A point's line or area; an area's ring isn't closed (the first point isn't repeated). */
+export interface PointShape {
+  kind: 'line' | 'area';
+  coords: LatLng[];
 }
 
 /** One downloaded corridor, remembered so its data can be deleted later. */
@@ -136,6 +146,8 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   poi: { label: 'Point of interest', icon: '★', color: '#2980b9' },
   shuttle: { label: 'Shuttle / outfitter', icon: '🚐', color: '#16a085' },
   gauge: { label: 'Gauge', icon: '📈', color: '#7f8c8d' },
+  island: { label: 'Island', icon: '🏝', color: '#558b2f' },
+  bridge: { label: 'Bridge', icon: '🌉', color: '#6d4c41' },
 };
 
 export const SEVERITY_CATEGORIES: Category[] = ['hazard', 'rapid'];

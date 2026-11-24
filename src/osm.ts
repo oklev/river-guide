@@ -264,7 +264,7 @@ const waterTiles = new Map<string, Promise<ArrayBuffer | null>>();
 let templatePromise: Promise<string> | null = null;
 
 /** The z14 tile bytes: from saved offline data, else downloaded (kept for this session). */
-function tileBytes(t: TileCoord): Promise<ArrayBuffer | null> {
+export function mapTileBytes(t: TileCoord): Promise<ArrayBuffer | null> {
   const key = `${t.z}/${t.x}/${t.y}`;
   let p = waterTiles.get(key);
   if (!p) {
@@ -306,7 +306,7 @@ export async function isOnWater([lat, lng]: LatLng): Promise<boolean | undefined
   const t = { z, x: Math.floor(fx), y: Math.floor(fy) };
   let buf: ArrayBuffer | null;
   try {
-    buf = await tileBytes(t);
+    buf = await mapTileBytes(t);
   } catch {
     return undefined;
   }

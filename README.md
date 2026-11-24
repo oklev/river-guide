@@ -7,6 +7,8 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 **Points**
 - Add a point by tapping the map, then set its name, category, severity (hazards and rapids), river mile and description.
 - **Observations:** conditions change with season and water level, so each point keeps dated observations. Each observation has the date seen, water level (low/normal/high/flood), an optional gauge reading, severity and description. **Edit** fixes the current one; **+ New observation** (or **Save as new observation** in the editor) records a new one and moves the previous one into history. The most recently observed is always shown as current, so backfilling an older trip doesn't replace it. Popups show the current observation, earlier ones and when the point was last updated.
+- **Shapes:** any point can also have a **line** (a rapid, a strainer along the bank, a bridge) or an **area** (an island, an eddy, a shoal), drawn in its category colour. Choose Line or Area in the editor and tap **Draw**; the marker sits in the middle of the shape. Dragging the marker moves the whole shape.
+- **Islands and bridges from the map:** tap an island or a bridge on the map (zoom 13+) and choose **Create island point** / **Create bridge point**: the name and outline/line come from OpenStreetMap. Bridges are road/rail/path segments marked as bridges (joined across tile edges); islands are found by filling in the land around the tap on a small canvas of the surrounding water and tracing its outline if water encloses it.
 - Drag markers to reposition them.
 - **From route** fills in a point's river mile from the nearest route line.
 - The sidebar lists points sorted by river mile, with search and category filters.
@@ -142,6 +144,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/sync/driveShare.ts`, `driveOpen.ts`, `sharedImport.ts` | Sharing reports and routes through Drive, and opening/importing shared ones |
 | `src/sync/` | Device sync: merge logic, engine, Google Drive remote, Google sign-in, Photos picker |
 | `src/tripReport.ts`, `src/tripReportTemplate.ts`, `src/reportDialog.ts` | Trip report: options dialog and self-contained HTML export |
+| `src/mapFeatures.ts` | Finding islands and bridges on the base map, to turn them into points |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |

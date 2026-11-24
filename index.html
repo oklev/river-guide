@@ -130,6 +130,17 @@
           <h2 id="editor-title">New point</h2>
           <label>Name <input name="name" required maxlength="120" /></label>
           <label>Category <select name="category"></select></label>
+          <label>Shape
+            <span class="input-row">
+              <select name="shapeKind">
+                <option value="">Just a point</option>
+                <option value="line">Line (a rapid, a bridge, a strainer along the bank)</option>
+                <option value="area">Area (an island, an eddy, a shoal)</option>
+              </select>
+              <button type="button" id="editor-draw" class="btn small" hidden>Draw</button>
+            </span>
+            <small id="shape-hint"></small>
+          </label>
           <label>River mile
             <span class="input-row">
               <input name="riverMile" type="number" step="0.1" min="0" />

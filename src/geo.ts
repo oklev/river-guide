@@ -103,3 +103,37 @@ export function densify(coords: LatLng[], spacingKm: number): LatLng[] {
   }
   return out;
 }
+
+/** Where a shaped point's marker goes: halfway along a line, or the middle of an area. */
+export function shapeAnchor(kind: 'line' | 'area', coords: LatLng[]): LatLng {
+  if (kind === 'line') {
+    const half = lengthKm(coords) / 2;
+    let done = 0;
+    for (let i = 1; i < coords.length; i++) {
+      const seg = distKm(coords[i - 1], coords[i]);
+      if (done + seg >= half && seg > 0) {
+        const f = (half - done) / seg;
+        return [coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * f, coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * f];
+      }
+      done += seg;
+    }
+    return coords[0];
+  }
+  // Area-weighted centroid (falls back to the average of the corners for slivers).
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const [y0, x0] = coords[j];
+    const [y1, x1] = coords[i];
+    const cross = x0 * y1 - x1 * y0;
+    a += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  if (Math.abs(a) < 1e-12) {
+    const n = coords.length || 1;
+    return [coords.reduce((s, c) => s + c[0], 0) / n, coords.reduce((s, c) => s + c[1], 0) / n];
+  }
+  return [cy / (3 * a), cx / (3 * a)];
+}

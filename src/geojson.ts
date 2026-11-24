@@ -50,6 +50,16 @@ export function toGeoJSON(points: RiverPoint[], routes: Route[], tracks: Track[]
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** A point's line/area from a file, if it's well-formed. */
+function sanitizeShape(raw: any): RiverPoint['shape'] {
+  if (!raw || (raw.kind !== 'line' && raw.kind !== 'area') || !Array.isArray(raw.coords)) return undefined;
+  const coords = (raw.coords as unknown[])
+    .filter((c): c is [number, number] => Array.isArray(c) && isNum(c[0]) && isNum(c[1]) && Math.abs(c[0]) <= 90 && Math.abs(c[1]) <= 180)
+    .slice(0, 5000)
+    .map(([a, b]) => [a, b] as LatLng);
+  return coords.length >= (raw.kind === 'area' ? 3 : 2) ? { kind: raw.kind, coords } : undefined;
+}
+
 export interface ParsedData {
   points: RiverPoint[];
   routes: Route[];
@@ -91,6 +101,7 @@ export function fromGeoJSON(data: unknown): ParsedData {
         observedAt: isYmd(p.observedAt) ? p.observedAt : undefined,
         waterLevel: isWaterLevel(p.waterLevel) ? p.waterLevel : undefined,
         gauge: typeof p.gauge === 'string' && p.gauge ? p.gauge.slice(0, 200) : undefined,
+        shape: sanitizeShape(p.shape),
         history: Array.isArray(p.history)
           ? (p.history.map(sanitizeObservation).filter(Boolean) as NonNullable<ReturnType<typeof sanitizeObservation>>[])
           : undefined,
