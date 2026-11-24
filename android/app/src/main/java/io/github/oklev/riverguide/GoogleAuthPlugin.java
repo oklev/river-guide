@@ -37,9 +37,37 @@ import java.util.List;
 public class GoogleAuthPlugin extends Plugin {
     private ActivityResultLauncher<IntentSenderRequest> launcher;
     private PluginCall pending;
+    /** A riverguide:// link the app was started with, until the web app asks for it. */
+    private String launchUrl;
+
+    private static String riverGuideUrl(Intent intent) {
+        Uri d = intent == null ? null : intent.getData();
+        return d != null && "riverguide".equals(d.getScheme()) ? d.toString() : null;
+    }
+
+    /** The app was already running when a riverguide:// link was opened. */
+    @Override
+    protected void handleOnNewIntent(Intent intent) {
+        super.handleOnNewIntent(intent);
+        String url = riverGuideUrl(intent);
+        if (url == null) return;
+        JSObject o = new JSObject();
+        o.put("url", url);
+        notifyListeners("appUrlOpen", o, true);
+    }
+
+    /** The riverguide:// link the app was started with, if any (returned once). */
+    @PluginMethod
+    public void getLaunchUrl(PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("url", launchUrl);
+        launchUrl = null;
+        call.resolve(o);
+    }
 
     @Override
     public void load() {
+        launchUrl = riverGuideUrl(getActivity().getIntent());
         // Must be registered before the activity starts; plugins load during onCreate.
         launcher = getActivity().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), result -> {
             PluginCall call = pending;

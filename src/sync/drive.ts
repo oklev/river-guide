@@ -135,13 +135,3 @@ export async function shareWith(fileId: string, email: string, message: string):
     body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }),
   });
 }
-
-/** Download a file's contents (the caller must have access under drive.file). */
-export async function downloadText(fileId: string): Promise<{ ok: true; text: string; name?: string } | { ok: false; status: number }> {
-  const token = await getToken([SCOPES.drive]);
-  const res = await fetch(`${API}/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) return { ok: false, status: res.status };
-  const meta = await fetch(`${API}/files/${fileId}?fields=name`, { headers: { Authorization: `Bearer ${token}` } });
-  const name = meta.ok ? (await meta.json()).name : undefined;
-  return { ok: true, text: await res.text(), name };
-}

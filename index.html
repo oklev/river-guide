@@ -350,6 +350,20 @@
         </form>
       </dialog>
 
+      <dialog id="import-dialog" class="editor">
+        <div class="dialog-body">
+          <h2>Shared route</h2>
+          <p>Someone shared a River Guide route with you through Google Drive. Import it? You'll sign in with the Google account it was shared with.</p>
+          <p id="import-status" class="muted small" role="status"></p>
+          <div class="editor-actions">
+            <button type="button" id="import-later" class="btn">Not now</button>
+            <span class="spacer"></span>
+            <a id="import-in-app" class="btn" hidden>Open in the app</a>
+            <button type="button" id="import-go" class="btn primary">Import</button>
+          </div>
+        </div>
+      </dialog>
+
       <dialog id="share-dialog" class="editor">
         <div class="dialog-body">
           <h2 id="share-title">Share route</h2>
@@ -364,6 +378,18 @@
           <label class="check-row"><input id="share-photos" type="checkbox" checked /> Include photos</label>
           <label class="check-row"><input id="share-tracks" type="checkbox" /> Include my GPS tracks along this route</label>
           <div id="share-summary" class="small"></div>
+          <fieldset id="share-drive-box" class="share-drive" hidden>
+            <legend>Share through Google Drive</legend>
+            <label>Share with
+              <input id="share-emails" type="text" inputmode="email" autocomplete="off" placeholder="Email addresses, separated by commas" />
+            </label>
+            <p class="muted small">Saved to "River Guide › Shared routes" in your Drive. Google emails each person a link; opening it imports the route into their River Guide (in the browser, or the Android app).</p>
+            <div class="footer-row"><button type="button" id="share-drive" class="btn small">Save to Google Drive</button></div>
+            <div id="share-drive-result" class="small" hidden>
+              <a id="share-drive-link" target="_blank" rel="noopener">Shared route link</a> ·
+              <button type="button" id="share-drive-copy" class="link small">Copy link</button>
+            </div>
+          </fieldset>
           <div id="share-status" class="small" role="status"></div>
           <div class="editor-actions">
             <span class="spacer"></span>

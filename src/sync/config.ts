@@ -22,5 +22,8 @@ export const SCOPES = {
 
 export const googleConfigured = () => !!GOOGLE.webClientId;
 
+/** The web app: links to routes shared through Google Drive open it with ?import=<file ID>. */
+export const WEB_APP_URL = 'https://oklev.github.io/river-guide/app/';
+
 /** Public page that opens trip reports shared through Google Drive. */
 export const REPORT_VIEWER_URL = 'https://oklev.github.io/river-guide/app/view.html';

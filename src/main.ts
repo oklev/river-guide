@@ -21,6 +21,7 @@ import { initSync, setOnReceived } from './sync';
 import { initSyncUi } from './sync/ui';
 import { initPhotosPicker } from './sync/photosPicker';
 import { initReportDialog } from './reportDialog';
+import { initSharedImport } from './sync/sharedImport';
 import { $, prefs } from './ui';
 
 initOsmLayer();
@@ -136,5 +137,7 @@ setOnReceived(async () => {
 });
 initSync();
 initSyncUi();
+// A route shared through Google Drive (?import= link, or riverguide:// in the Android app).
+initSharedImport();
 initPhotosPicker();
 initReportDialog();

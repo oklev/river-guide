@@ -25,6 +25,8 @@ interface GoogleAuthPlugin {
   authorize(opts: { scopes: string[]; interactive: boolean }): Promise<{ accessToken: string; email?: string }>;
   signOut(): Promise<void>;
   openUrl(opts: { url: string }): Promise<void>;
+  getLaunchUrl(): Promise<{ url?: string | null }>;
+  addListener(event: 'appUrlOpen', cb: (e: { url: string }) => void): Promise<{ remove: () => void }>;
 }
 const NativeAuth = registerPlugin<GoogleAuthPlugin>('GoogleAuth');
 
@@ -137,6 +139,13 @@ export async function signOut() {
   prefs.set('googleSignedIn', '0');
   if (isNative) await NativeAuth.signOut().catch(() => {});
   else if (t && typeof google !== 'undefined') google.accounts.oauth2.revoke?.(t.token, () => {});
+}
+
+/** Android: riverguide:// links the app was opened with (route shares). */
+export async function onAppLink(cb: (url: string) => void) {
+  const launch = await NativeAuth.getLaunchUrl().catch(() => ({ url: null }));
+  if (launch.url) cb(launch.url);
+  await NativeAuth.addListener('appUrlOpen', (e) => cb(e.url));
 }
 
 /** Android: open a Google page outside the app (WebViews can't open new windows). */

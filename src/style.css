@@ -422,8 +422,14 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 
 /* ---------- trip report dialog ---------- */
 .report-dialog .dialog-body { max-height: min(86dvh, 860px); overflow: auto; }
+.share-drive { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.share-drive legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.share-drive[hidden] { display: none; }
 .report-dialog fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .report-dialog legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
 .report-dialog fieldset[hidden] { display: none; }
 .rep-list { display: flex; flex-direction: column; gap: 2px; }
 .rep-list .muted { font-size: 12px; }
+
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.btn[hidden] { display: none; }

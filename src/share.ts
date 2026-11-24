@@ -14,6 +14,8 @@ import { renderPortages } from './portages';
 import { refreshNav } from './nav';
 import type { Photo, Portage, RiverPoint, Route, Track } from './types';
 import { $, fmtBytes } from './ui';
+import { googleConfigured, WEB_APP_URL } from './sync/config';
+import { connectDrive, copyLink, parseEmails, saveAndShare } from './sync/driveShare';
 
 /**
  * A route package (.riverguide.zip) holds everything about a route that can't
@@ -226,11 +228,54 @@ export function openShare(r: Route) {
   map.closePopup();
   $('share-title').textContent = `Share “${r.name}”`;
   $('share-status').textContent = '';
+  $('share-drive-box').hidden = !googleConfigured();
+  $('share-drive-result').hidden = true;
   updateSummary();
   dialog().showModal();
 }
 
+/** Save the package to Drive (River Guide › Shared routes) and share it by email. */
+async function shareToDrive() {
+  if (!shareRoute) return;
+  const r = shareRoute;
+  const btn = $<HTMLButtonElement>('share-drive');
+  const step = (m: string) => ($('share-status').textContent = m);
+  const { emails, bad } = parseEmails($<HTMLInputElement>('share-emails').value);
+  if (bad.length) return step(`Not an email address: ${bad.join(', ')}`);
+  btn.disabled = true;
+  try {
+    await connectDrive(); // from the tap: Google may ask to sign in
+    step('Packing…');
+    const blob = await buildPackage(select(r, corridor(), withPhotos(), withTracks()));
+    const link = await saveAndShare({
+      folder: 'Shared routes',
+      name: `${safeName(r.name)}.riverguide.zip`,
+      data: blob,
+      type: 'application/zip',
+      emails,
+      link: (id) => `${WEB_APP_URL}?import=${encodeURIComponent(id)}`,
+      subject: `River Guide route: ${r.name}`,
+      onStep: step,
+    });
+    $<HTMLAnchorElement>('share-drive-link').href = link;
+    $('share-drive-result').hidden = false;
+    step(
+      emails.length
+        ? `Saved to Google Drive and shared with ${emails.join(', ')}. Google has emailed them the link.`
+        : 'Saved to Google Drive. Add email addresses to share it, or share the file from Drive.',
+    );
+  } catch (err) {
+    step(`Couldn't save to Google Drive: ${(err as Error).message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 export function initShare() {
+  $('share-drive').addEventListener('click', () => void shareToDrive());
+  $('share-drive-copy').addEventListener('click', () =>
+    void copyLink($<HTMLAnchorElement>('share-drive-link').href, (m) => ($('share-status').textContent = m)),
+  );
   for (const id of ['share-corridor', 'share-photos', 'share-tracks']) $(id).addEventListener('change', updateSummary);
   $('share-cancel').addEventListener('click', () => dialog().close());
   $('share-export').addEventListener('click', async () => {
