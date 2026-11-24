@@ -8,6 +8,7 @@ import { importFile, initShare } from './share';
 import { initPortages, renderPortages } from './portages';
 import { initGauges, refreshGauges, renderGauges } from './gauges';
 import { initNav, refreshNav, renderNav, setNav } from './nav';
+import { initLand, refreshLand, renderLand, setLand } from './land';
 import { initPoints, renderPoints } from './points';
 import { initRoutes, refreshStorageInfo, renderRoutes } from './routes';
 import { initOsmLayer, renderOsm } from './osmLayer';
@@ -35,6 +36,7 @@ initShare();
 initPortages();
 initGauges();
 initNav();
+initLand();
 initSystemBars();
 
 // ---------- sidebar ----------
@@ -88,7 +90,7 @@ window.addEventListener('offline', syncOnline);
 syncOnline();
 
 // ---------- boot ----------
-const [points, routes, tracks, photos, portages, gauges, nav, osmTiles] = await Promise.all([
+const [points, routes, tracks, photos, portages, gauges, nav, land, osmTiles] = await Promise.all([
   getAll('points'),
   getAll('routes'),
   getAll('tracks'),
@@ -96,6 +98,7 @@ const [points, routes, tracks, photos, portages, gauges, nav, osmTiles] = await 
   getAll('portages'),
   getAll('gauges'),
   getAll('nav'),
+  getAll('land'),
   loadAllOsm(),
 ]);
 Object.assign(state, { points, routes, tracks, photos, portages, gauges });
@@ -103,6 +106,8 @@ await finishInterruptedTracks();
 renderOsm(osmTiles);
 setNav(nav);
 renderNav();
+setLand(land);
+renderLand();
 renderGauges();
 renderRoutes();
 renderPortages();
@@ -112,6 +117,7 @@ renderPoints();
 void refreshStorageInfo();
 void refreshGauges();
 void refreshNav();
+void refreshLand();
 // Pick up photos taken in a photo session while the app was closed.
 if (hasCameraRoll) void syncSession();
 
@@ -135,6 +141,7 @@ setOnReceived(async () => {
   renderPoints();
   renderGauges();
   void refreshNav();
+  void refreshLand();
 });
 // A trip in progress (from before the app was closed) needs the routes loaded.
 initTrips();

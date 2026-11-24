@@ -340,3 +340,31 @@ export interface TripInfo {
   coords: LatLng[];
   km: number;
 }
+
+/** Whether the public may use a piece of land (PAD-US "Pub_Access"). */
+export type LandAccess = 'open' | 'restricted' | 'closed' | 'unknown';
+
+/** A piece of public or protected land near a route, from the USGS PAD-US database. */
+export interface LandArea {
+  name: string;
+  /** Who manages it, in words ("Tennessee Valley Authority", "City"). */
+  manager: string;
+  /** PAD-US manager type code: FED, STAT, LOC, DIST, JNT, NGO, PVT, TRIB, UNK. */
+  managerType: string;
+  /** PAD-US manager name code, e.g. TVA, NPS, CITY. */
+  managerCode: string;
+  access: LandAccess;
+  /** What kind of place it is ("Local park", "State conservation area"). */
+  designation?: string;
+  /** Outer rings and holes together (drawn even-odd). */
+  rings: LatLng[][];
+}
+
+/** Public land along one route, cached for offline use. */
+export interface RouteLand {
+  routeId: string;
+  /** Fingerprint of the route (and forks) the data was fetched for. */
+  key: string;
+  fetchedAt: string;
+  areas: LandArea[];
+}

@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Gauge, OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, RouteNav, Tombstone, Track } from './types';
+import type { Gauge, OsmTile, Photo, PhotoBlob, Portage, RiverPoint, Route, RouteLand, RouteNav, Tombstone, Track } from './types';
 
 const DB_NAME = 'river-guide';
 
@@ -13,6 +13,7 @@ interface Stores {
   portages: Portage;
   gauges: Gauge;
   nav: RouteNav;
+  land: RouteLand;
   tombstones: Tombstone;
 }
 export type StoreName = keyof Stores;
@@ -33,9 +34,10 @@ const STORES: Record<StoreName, string> = {
   portages: 'id',
   gauges: 'id',
   nav: 'routeId',
+  land: 'routeId',
   tombstones: 'key',
 };
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 

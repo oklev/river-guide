@@ -47,6 +47,16 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - It's fetched automatically for every route when you're online, refreshed monthly or when you edit the line, and saved so it works offline. It's only a few KB per route.
 - Data comes from the US Army Corps of Engineers' [Inland Electronic Navigational Charts](https://ienccloud.us/) (public, no key). Small rivers aren't charted, so nothing is shown there. Charts can be out of date, so on the water the actual buoys take priority.
 
+**Public land along the river (PAD-US)**
+- Each route shows the public and protected land along its banks, shaded by whether you may use it:
+  - dark green: open to the public;
+  - light green: public, with restrictions (permits, hours or seasons);
+  - dashed: access not recorded (for example TVA land, or a land trust's tract);
+  - red: closed.
+- **Tap the bank** to see whose land it is and what that means, with notes for TVA and Corps land. Tapping land near a route that isn't shaded says so: that bank is most likely private.
+- Fetched automatically for every route (main line and forks) when you're online, refreshed every couple of months or when the route changes, and saved for offline use. It's usually 10 to 40 KB per route.
+- Data comes from the USGS [Protected Areas Database](https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-overview) (public, no key). It shows who owns or manages land, not whether you may land on a particular spot: look for signs, and ask before landing on private banks.
+
 **Trails, parks & campsites overlay**
 - When you save a route offline, the app can also save OpenStreetMap data for the same corridor. This is on by default.
 - The data shows as a layer you can toggle: shaded parks (city parks as well as national, state and protected areas) with name labels, footpaths and tracks (tap a named trail to see its name), and icons for campsites, shelters, marinas, viewpoints, restrooms and drinking water.
@@ -63,7 +73,7 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - **Panoramas** (2:1 or wider) are kept at higher resolution and open full-height in the viewer, where you swipe to look around.
 
 **Sync between devices (Google Drive)**
-- **Connect Google Drive** in the sidebar on each device. Points, routes, tracks, portages/trails and photos then stay in sync through a "River Guide" folder in your Drive. Gauges, navigation charts and offline maps aren't synced; each device fetches its own.
+- **Connect Google Drive** in the sidebar on each device. Points, routes, tracks, portages/trails and photos then stay in sync through a "River Guide" folder in your Drive. Gauges, navigation charts, public-land data and offline maps aren't synced; each device fetches its own.
 - Syncs when the app opens, about 10 s after a change, when you're back online, every 5 minutes while open, and with **Sync now**.
 - If two devices change the same item, the newer change wins. Deletions sync too (they're remembered for 90 days).
 - How it works: each device writes only its own `device-<id>.json` snapshot (so devices never overwrite each other) and reads everyone else's; photos are separate `photo-<id>.jpg` / `thumb-<id>.jpg` files uploaded once. The app only has access to files it creates (Drive's `drive.file` scope).
@@ -154,6 +164,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/access.ts` | Access points attached to spots on routes |
 | `src/trip.ts` | Trips: put-in/take-out, highlighted section, live progress |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
+| `src/land.ts` | Public-land layer from USGS PAD-US, and what's at a tapped spot |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |
 

@@ -448,3 +448,10 @@ body.recording .hint { top: calc(var(--topbar-h) + 56px); }
 
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .btn[hidden] { display: none; }
+
+/* Public-land info in map-tap popups */
+.land-info { margin-top: 2px; }
+.popup-actions + .land-info { margin-top: 10px; padding-top: 8px; border-top: 1px solid #0002; }
+.land-info p { margin: 4px 0; }
+.land-item + .land-item { margin-top: 8px; }
+.land-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; opacity: 0.8; }

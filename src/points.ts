@@ -25,6 +25,8 @@ import {
 } from './observations';
 import { $, escapeHtml, getMode, setMode } from './ui';
 import { mapFeatureAt, type MapFeature } from './mapFeatures';
+import { landAt, landPopupHtml, landShown } from './land';
+import { isOnWater } from './osm';
 import { linkSummary, nearestRouteSpot, renderAccessLinks } from './access';
 import { deletePhotos, importFiles, photosOf, setPhotoPoint, thumbUrl } from './photos';
 import { dailyMean, fmtValue, freshGauge, levelFor, nearestGauge, readingSummary, routeGauge, LEVEL_LABELS } from './gauges';
@@ -629,21 +631,33 @@ export function initPoints() {
   let offered: MapFeature | null = null;
   let lookup = 0;
   map.on('click', async (e: L.LeafletMouseEvent) => {
-    if (getMode() !== 'idle' || map.getZoom() < 13) return;
+    if (getMode() !== 'idle' || map.getZoom() < 12) return;
     // Taps on routes, tracks, shapes etc. are theirs, not the base map's.
     if ((e.originalEvent.target as Element | null)?.closest?.('.leaflet-interactive, .leaflet-marker-icon, .leaflet-popup')) return;
+    const at: LatLng = [e.latlng.lat, e.latlng.lng];
     const mine = ++lookup;
-    const f = await mapFeatureAt([e.latlng.lat, e.latlng.lng]).catch(() => null);
-    if (!f || mine !== lookup || getMode() !== 'idle') return;
+    // Whose land is this? (Only near routes, where the public-land layer has data.)
+    const land = landShown() ? landAt(at) : null;
+    const f = map.getZoom() >= 13 ? await mapFeatureAt(at).catch(() => null) : null;
+    if (mine !== lookup || getMode() !== 'idle') return;
+    let landHtml = '';
+    if (land?.length) landHtml = landPopupHtml(land);
+    else if (land && f?.kind !== 'bridge') {
+      // "Probably private" only on land, not out on the river.
+      const onLand = f?.kind === 'island' || (await isOnWater(at).catch(() => undefined)) === false;
+      if (mine !== lookup || getMode() !== 'idle') return;
+      if (onLand) landHtml = landPopupHtml([]);
+    }
+    if (!f && !landHtml) return;
     offered = f;
-    const c = CATEGORIES[f.kind];
-    L.popup({ maxWidth: 260 })
-      .setLatLng(e.latlng)
-      .setContent(
-        `<div class="popup"><strong>${c.icon} ${escapeHtml(f.name ?? (f.kind === 'island' ? 'Island' : 'Bridge'))}</strong>
+    const featureHtml = f
+      ? `<strong>${CATEGORIES[f.kind].icon} ${escapeHtml(f.name ?? (f.kind === 'island' ? 'Island' : 'Bridge'))}</strong>
           <div class="popup-meta">${f.kind === 'island' ? 'Island' : 'Bridge'} on the map (OpenStreetMap)</div>
-          <div class="popup-actions"><button class="btn small primary" data-map-feature>Create ${f.kind} point</button></div></div>`,
-      )
+          <div class="popup-actions"><button class="btn small primary" data-map-feature>Create ${f.kind} point</button></div>`
+      : '';
+    L.popup({ maxWidth: 280 })
+      .setLatLng(e.latlng)
+      .setContent(`<div class="popup">${featureHtml}${landHtml}</div>`)
       .openOn(map);
   });
   map.getContainer().addEventListener('click', (e) => {

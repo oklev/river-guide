@@ -22,6 +22,7 @@ import { openShare } from './share';
 import { detachFromRoute, portageMile, portagesOf } from './portages';
 import { fmtValue, gaugesNearRoute, refreshGauges, routeConditions } from './gauges';
 import { forgetNav, refreshNav } from './nav';
+import { forgetLand, refreshLand } from './land';
 import { CATEGORIES, GAUGE_PARAMS, PATH_KINDS, ROUTE_COLORS, type GaugeParam, type LatLng, type OfflineArea, type Route, type RouteFork } from './types';
 import { allLines, forkFromDrawing, locateOnRoute, MAIN, riverKm } from './routeGraph';
 import { accessPlace, renderAccessLinks } from './access';
@@ -184,6 +185,7 @@ function drawFork(r: Route, fork?: RouteFork) {
       r.forks = [...(r.forks ?? []).filter((x) => x.id !== id), made];
       if (r.offline) r.offline.stale = true;
       await saveRoute(r);
+      void refreshLand();
     },
     {
       hint: 'Start on the route line and tap along the fork. End back on the route for a channel that rejoins, or anywhere for a side branch.',
@@ -282,6 +284,7 @@ export async function createRoute(coords: LatLng[], name?: string, color?: strin
   await saveRoute(r); // save right away so the line is never lost
   void refreshGauges();
   void refreshNav();
+  void refreshLand();
   focusRoute(r);
   openDetails(r, true);
 }
@@ -297,6 +300,7 @@ function editLine(r: Route) {
       await saveRoute(r);
       void refreshGauges();
       void refreshNav();
+      void refreshLand();
     }
     renderRoutes();
   });
@@ -667,6 +671,7 @@ export function initRoutes() {
     await del('routes', r.id);
     await detachFromRoute(r.id);
     await forgetNav(r.id);
+    await forgetLand(r.id);
     state.routes = state.routes.filter((x) => x.id !== r.id);
     detailsRoute = null;
     detailsDialog.close();

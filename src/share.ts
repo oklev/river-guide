@@ -12,6 +12,7 @@ import { renderTracks } from './tracks';
 import { renderPhotos } from './photos';
 import { renderPortages } from './portages';
 import { refreshNav } from './nav';
+import { refreshLand } from './land';
 import type { Photo, Portage, RiverPoint, Route, Track } from './types';
 import { $, fmtBytes } from './ui';
 import { googleConfigured, WEB_APP_URL } from './sync/config';
@@ -196,6 +197,7 @@ export async function importFile(file: File) {
   renderPhotos();
   renderPortages();
   void refreshNav();
+  void refreshLand();
   if (result.bounds.length) map.fitBounds(L.latLngBounds(result.bounds), { padding: [40, 40], maxZoom: 15 });
   const changes = [result.added && `${result.added} new`, result.updated && `${result.updated} updated`, result.skipped && `${result.skipped} unchanged (yours is newer or the same)`]
     .filter(Boolean)
