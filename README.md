@@ -17,6 +17,10 @@ A paddling map where you can create and edit your own river data: hazards, rapid
 - Each route's popup lists the points within 0.5 km of the line, in river-mile order (a quick trip sheet).
 - **Portages and access trails** are dotted walking paths drawn the same way as routes, in feet: red for carrying around a hazard or dam, brown for walking between parking and the water. Each one attaches to the nearest route (changeable), appears in that route's popup at its river mile, and is included when the route is shared. Deleting a route keeps its paths but detaches them.
 
+**Your location**
+- A live marker follows you while the app is open: a pulsing blue dot, or a **kayak, paddleboard or canoe** (choose in the sidebar under "Show my location as"). It turns to point the way you're heading, from the GPS's own heading when moving or worked out from your last few metres. A faint circle shows the GPS accuracy.
+- ◎ centers the map on you. The marker appears by itself on startup if location is already allowed (it never prompts), and the GPS is only used while the app is on screen.
+
 **Offline**
 - The app is an installable PWA, and a service worker caches the app shell.
 - Points and routes live in IndexedDB, so they're always available offline.
@@ -120,6 +124,7 @@ git commit -am "Release v0.6.0" && git tag v0.6.0 && git push && git push --tags
 | `src/osmLayer.ts` | Renders the trails, parks & campsites overlay |
 | `src/geo.ts` | Distance, length, project-point-onto-line math |
 | `src/cameraRoll.ts` | Android photo sessions (camera app + camera-roll import) |
+| `src/myLocation.ts` | Live "you are here" marker (dot or boat icon) |
 | `src/nav.ts` | Navigation-channel layer from USACE inland charts |
 | `src/store.ts` | IndexedDB persistence |
 | `src/geojson.ts` | GeoJSON import/export |

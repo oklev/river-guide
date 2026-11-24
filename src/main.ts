@@ -1,4 +1,3 @@
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './style.css';
 import { map } from './map';
@@ -17,6 +16,7 @@ import { finishInterruptedTracks, initTracks, renderTracks } from './tracks';
 import { initPhotos, renderPhotos } from './photos';
 import { initCameraRoll, syncSession } from './cameraRoll';
 import { initSystemBars, saveFile } from './platform';
+import { initMyLocation } from './myLocation';
 import { $, prefs } from './ui';
 
 initOsmLayer();
@@ -73,13 +73,7 @@ $<HTMLInputElement>('import').addEventListener('change', async (e) => {
 });
 
 // ---------- geolocation ----------
-let youAreHere: L.CircleMarker | null = null;
-$('locate').addEventListener('click', () => map.locate({ setView: true, maxZoom: 15 }));
-map.on('locationfound', (e: L.LocationEvent) => {
-  youAreHere ??= L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 2, fillColor: '#1e88e5', fillOpacity: 1 });
-  youAreHere.setLatLng(e.latlng).addTo(map);
-});
-map.on('locationerror', (e: L.ErrorEvent) => alert(`Couldn't get location: ${e.message}`));
+initMyLocation();
 
 // ---------- offline indicator ----------
 const syncOnline = () => document.body.classList.toggle('offline', !navigator.onLine);
