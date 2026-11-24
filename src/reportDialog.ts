@@ -2,7 +2,7 @@ import { map } from './map';
 import { editor } from './routes';
 import { thumbUrl } from './photos';
 import { KM_PER_MI } from './geo';
-import { $, escapeHtml, fmtMi } from './ui';
+import { $, escapeHtml, fmtMi, prefs } from './ui';
 import {
   candidatePhotos,
   candidateTracks,
@@ -34,6 +34,41 @@ let photos: Photo[] = [];
 let defaults = new Set<string>();
 /** The user's own ticks/unticks, kept when the track choice changes. */
 const overrides = new Map<string, boolean>();
+
+/**
+ * Choices remembered per route (or per track) on this device, so making
+ * another report starts from the same photos, tracks and features.
+ */
+interface Remembered {
+  photos: Record<string, boolean>;
+  tracks?: string[];
+  points?: boolean;
+  show?: ReportOptions['show'];
+}
+let memoryKey = '';
+function loadMemory(key: string): Remembered | null {
+  try {
+    const m = JSON.parse(prefs.get(`report:${key}`) ?? 'null');
+    return m && typeof m.photos === 'object' ? m : null;
+  } catch {
+    return null;
+  }
+}
+function remember() {
+  if (!memoryKey) return;
+  const m: Remembered = {
+    photos: Object.fromEntries(overrides),
+    tracks: opts.tracks.map((t) => t.id),
+    points: check('rep-points').checked,
+    show: {
+      stats: check('rep-stats').checked,
+      speed: check('rep-speed').checked,
+      sun: check('rep-sun').checked,
+      legend: check('rep-legend').checked,
+    },
+  };
+  prefs.set(`report:${memoryKey}`, JSON.stringify(m));
+}
 
 const dialog = () => $<HTMLDialogElement>('report-dialog');
 const check = (id: string) => $<HTMLInputElement>(id);
@@ -83,6 +118,7 @@ function renderPhotos() {
     b.append(img);
     b.addEventListener('click', () => {
       overrides.set(ph.id, !isOn(ph));
+      remember();
       b.setAttribute('aria-pressed', String(isOn(ph)));
       updateCount();
     });
@@ -131,6 +167,16 @@ export function openReportDialog(src: ReportSource) {
   showRoute = true;
   allTracks = candidateTracks(src).tracks;
   overrides.clear();
+  // Start from what was chosen last time for this route (or track).
+  memoryKey = src.route ? `route:${src.route.id}` : src.track ? `track:${src.track.id}` : '';
+  const mem = memoryKey ? loadMemory(memoryKey) : null;
+  if (mem) {
+    for (const [id, on] of Object.entries(mem.photos)) overrides.set(id, !!on);
+    const tracks = allTracks.filter((t) => mem.tracks?.includes(t.id));
+    if (mem.tracks && (tracks.length || !mem.tracks.length)) opts.tracks = tracks;
+    if (mem.show) opts.show = { ...opts.show, ...mem.show };
+    if (typeof mem.points === 'boolean') opts.points = mem.points;
+  }
   check('rep-title').value = opts.title;
   $<HTMLTextAreaElement>('rep-subtitle').value = opts.subtitle;
   for (const k of ['points', 'stats', 'speed', 'sun', 'legend'] as const) {
@@ -229,6 +275,7 @@ export function initReportDialog() {
     if (!t) return;
     opts.tracks = (e.target as HTMLInputElement).checked ? [...opts.tracks, t] : opts.tracks.filter((x) => x !== t);
     refreshPhotoCandidates();
+    remember();
   });
   check('rep-route').addEventListener('change', () => {
     showRoute = check('rep-route').checked;
@@ -242,11 +289,19 @@ export function initReportDialog() {
   });
   $('rep-photos-all').addEventListener('click', () => {
     for (const ph of photos) overrides.set(ph.id, true);
+    remember();
     renderPhotos();
   });
   $('rep-photos-none').addEventListener('click', () => {
     for (const ph of photos) overrides.set(ph.id, false);
+    remember();
     renderPhotos();
   });
   $('rep-save').addEventListener('click', () => void save());
+  $('rep-photos-reset').addEventListener('click', () => {
+    for (const ph of photos) overrides.delete(ph.id);
+    remember();
+    renderPhotos();
+  });
+  for (const k of ['points', 'stats', 'speed', 'sun', 'legend']) check(`rep-${k}`).addEventListener('change', remember);
 }
